@@ -1,5 +1,5 @@
 """
-ASTRA-HAR Backend — FastAPI application entrypoint.
+KRIYA-SENSE Backend — FastAPI application entrypoint.
 
 This is intentionally NOT an AI backend yet (see api/state.py for the
 mock data contract that stands in for it). Its job right now is to:
@@ -36,7 +36,7 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 load_dotenv(BASE_DIR / ".env")
 
-API_TITLE = os.getenv("API_TITLE", "ASTRA-HAR Backend")
+API_TITLE = os.getenv("API_TITLE", "KRIYA-SENSE Backend")
 API_VERSION = os.getenv("API_VERSION", "0.1.0-placeholder")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
@@ -61,6 +61,20 @@ app.include_router(api_router)
 
 if SERVE_FRONTEND and FRONTEND_DIR.is_dir():
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+else:
+    # Render deployment path: the frontend is deployed separately (Vercel)
+    # and, with Root Directory set to backend/, frontend/ isn't even present
+    # in this service's checkout — so "/" isn't swallowed by a static mount.
+    # Render's health check (and anyone hitting the bare API URL) still
+    # needs a real response here instead of a 404.
+    @app.get("/")
+    def root_status():
+        return {
+            "status": "ok",
+            "service": API_TITLE,
+            "version": API_VERSION,
+            "message": "Backend is running. Frontend is served separately.",
+        }
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host=HOST, port=PORT, reload=RELOAD)

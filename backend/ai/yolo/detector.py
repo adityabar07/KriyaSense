@@ -7,7 +7,7 @@ model can be dropped in later without touching any other file. See
 backend/ai/README.md for the dataset/training plan.
 
 Expected real implementation: Ultralytics YOLOv8/YOLOv10, fine-tuned on the
-ASTRA-HAR object classes and exported to ONNX for edge inference.
+KRIYA-SENSE object classes and exported to ONNX for edge inference.
 """
 
 from dataclasses import dataclass
@@ -36,7 +36,7 @@ class Detection:
 
 
 class YOLODetector:
-    def __init__(self, model_path: str = "models/astra_har_yolo.onnx"):
+    def __init__(self, model_path: str = "models/kriya_sense_yolo.onnx"):
         self.model_path = model_path
         self._model = None  # TODO: ultralytics.YOLO(model_path) or an onnxruntime.InferenceSession
 

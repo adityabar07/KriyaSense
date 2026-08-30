@@ -20,7 +20,7 @@ class TemporalPrediction:
 
 
 class TemporalSequenceModel:
-    def __init__(self, window_size: int = 16, model_path: str = "models/astra_har_temporal.onnx"):
+    def __init__(self, window_size: int = 16, model_path: str = "models/kriya_sense_temporal.onnx"):
         self.window_size = window_size
         self.model_path = model_path
         self._model = None  # TODO: load the trained LSTM/GRU/Transformer

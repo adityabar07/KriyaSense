@@ -1,4 +1,4 @@
-# ASTRA-HAR
+# KRIYA-SENSE
 
 **AI Human Activity Recognition & Experiment Validation System**
 SIH 2026 · Problem Statement 26174 · ISRO — *AI Human Activity Recognition for On-board BAS Experiments*
@@ -8,7 +8,7 @@ SIH 2026 · Problem Statement 26174 · ISRO — *AI Human Activity Recognition f
 ## 1. Project Structure
 
 ```
-ASTRA-HAR/
+KRIYA-SENSE/
 ├── frontend/                  Static web dashboard (HTML/CSS/vanilla JS)
 │   ├── index.html
 │   ├── css/style.css
@@ -61,7 +61,7 @@ Configuration lives in `backend/.env` (git-ignored; `backend/.env.example` docum
 
 | Key | Default | Meaning |
 |---|---|---|
-| `API_TITLE`, `API_VERSION` | `ASTRA-HAR Backend`, `0.1.0-placeholder` | Shown in `/docs` (OpenAPI) |
+| `API_TITLE`, `API_VERSION` | `KRIYA-SENSE Backend`, `0.1.0-placeholder` | Shown in `/docs` (OpenAPI) |
 | `HOST`, `PORT` | `0.0.0.0`, `8000` | Used when running `python main.py` directly; the `uvicorn` CLI's own `--host`/`--port` flags take precedence over these if passed |
 | `RELOAD` | `true` | Auto-reload on file changes (only applies to `python main.py`) |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins — tighten once the frontend has a fixed deployed origin |

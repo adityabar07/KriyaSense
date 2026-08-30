@@ -1,4 +1,4 @@
-# ASTRA-HAR — AI Model & Dataset Plan
+# KRIYA-SENSE — AI Model & Dataset Plan
 
 This document is the reference for whoever implements the real models behind
 `backend/ai/*`. Nothing in this folder runs real inference yet (see each

@@ -1,5 +1,5 @@
 """
-REST + WebSocket routes for the ASTRA-HAR mock API.
+REST + WebSocket routes for the KRIYA-SENSE mock API.
 
 Every handler here returns mock/randomized data with the exact JSON shape
 the frontend already expects from frontend/js/api.js. Replace the body of
@@ -22,6 +22,12 @@ from pydantic import BaseModel
 from . import state
 
 router = APIRouter()
+
+
+@router.get("/health")
+def health_check():
+    """Unprefixed on purpose — this is what Render's health check hits."""
+    return {"status": "healthy"}
 
 
 @router.get("/api/status")

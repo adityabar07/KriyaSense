@@ -32,7 +32,7 @@ class FrameFeatures:
 
 
 class HARModel:
-    def __init__(self, model_path: str = "models/astra_har_classifier.onnx"):
+    def __init__(self, model_path: str = "models/kriya_sense_classifier.onnx"):
         self.model_path = model_path
         self._model = None  # TODO: load the trained classifier
 
@@ -41,4 +41,4 @@ class HARModel:
 
     def predict(self, features: FrameFeatures) -> Dict[str, float]:
         """Return {activity_class: confidence} for a single frame."""
-        raise NotImplementedError("Train the HAR classifier on ASTRA-HAR feature data — see backend/ai/README.md")
+        raise NotImplementedError("Train the HAR classifier on KRIYA-SENSE feature data — see backend/ai/README.md")

@@ -231,7 +231,7 @@ const ASTRA_EXPERIMENT = (() => {
 
   function exportEventLogTxt() {
     const lines = [
-      'ASTRA-HAR EXPERIMENT EVENT LOG',
+      'KRIYA-SENSE EXPERIMENT EVENT LOG',
       `Experiment: ${state.experimentName}`,
       `Exported: ${new Date().toString()}`,
       '='.repeat(70),
@@ -245,7 +245,7 @@ const ASTRA_EXPERIMENT = (() => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `astra-har-event-log-${Date.now()}.txt`;
+    a.download = `kriya-sense-event-log-${Date.now()}.txt`;
     document.body.appendChild(a);
     a.click();
     a.remove();

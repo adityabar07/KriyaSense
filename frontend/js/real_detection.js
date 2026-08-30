@@ -7,7 +7,7 @@
    inference.
 
    This is real, general-purpose CV: person + ~80 COCO object classes,
-   and real 33-point pose landmarks. It has NOT been trained on ASTRA-HAR's
+   and real 33-point pose landmarks. It has NOT been trained on KRIYA-SENSE's
    lab equipment (test tube, syringe, etc.) or on the BAS action sequence —
    that requires the custom dataset documented in backend/ai/README.md.
    Anything this module can't honestly claim (e.g. "pick up bottle") it
