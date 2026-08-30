@@ -1,0 +1,856 @@
+/* ==========================================================================
+   app.js
+   Application shell: navigation, global clock, and wiring between
+   media.js / camera.js / detection.js / tracking.js / activity.js /
+   overlay.js / experiment.js / api.js and the DOM. This is the only file
+   that touches page structure directly.
+   ========================================================================== */
+
+(() => {
+
+  const PAGE_META = {
+    'dashboard':          { title: 'Dashboard',            crumb: 'Mission Overview' },
+    'live-analysis':      { title: 'Live Analysis',        crumb: 'Real-Time Vision & Detection' },
+    'general-activity':   { title: 'General Activity',     crumb: 'Continuous HAR Mode' },
+    'experiment-mode':    { title: 'Experiment Mode',      crumb: 'Sequence Validation & FSM' },
+    'experiment-builder': { title: 'Experiment Builder',   crumb: 'Define a Protocol Sequence' },
+    'activity-history':   { title: 'Activity History',     crumb: 'Timeline & Event Log' },
+    'ai-pipeline':        { title: 'AI Pipeline',          crumb: 'End-to-End Processing Chain' },
+    'system-monitor':     { title: 'System Monitor',       crumb: 'Hardware & Model Telemetry' },
+    'video-streaming':    { title: 'Video Streaming',      crumb: 'Recording, Encoding & IP Stream' },
+    'settings':           { title: 'Settings',             crumb: 'Backend Connection & Architecture' },
+  };
+
+  const MODULES = [
+    { name: 'YOLO', desc: 'Object / person detection' },
+    { name: 'POSE', desc: 'MediaPipe / YOLO Pose estimation' },
+    { name: 'TRACKING', desc: 'Cross-frame identity tracking' },
+    { name: 'HAND DETECTION', desc: 'Hand position localization' },
+    { name: 'HAND-OBJECT INTERACTION', desc: 'Manipulation classification' },
+    { name: 'HAR MODEL', desc: 'Human activity recognition' },
+    { name: 'TEMPORAL MODEL', desc: 'LSTM / GRU / Transformer' },
+    { name: 'FSM', desc: 'Experiment sequence validation' },
+    { name: 'TTS', desc: 'Voice guidance & alerts' },
+  ];
+
+  const state = {
+    activePage: 'dashboard',
+    latestFrame: { persons: [], objects: [] },
+    animStart: performance.now(),
+    lastViolationRef: null,
+    builderSteps: [],
+    selectedHistoryPersonId: null,
+  };
+
+  const $ = sel => document.querySelector(sel);
+  const $all = sel => Array.from(document.querySelectorAll(sel));
+
+  function kvHtml(rows) {
+    return rows.map(r => `<div class="kv-row"><span class="k">${r.k}</span><span class="v ${r.cls || ''}">${r.v}</span></div>`).join('');
+  }
+
+  function formatDuration(ms) {
+    const s = Math.floor(ms / 1000);
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  /* ------------------------------- NAVIGATION ------------------------------- */
+
+  function switchPage(pageId) {
+    if (!PAGE_META[pageId]) return;
+    state.activePage = pageId;
+    $all('.page').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById(`page-${pageId}`);
+    if (target) target.classList.add('active');
+
+    $all('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === pageId));
+    $('#pageTitle').textContent = PAGE_META[pageId].title;
+    $('#pageCrumb').textContent = PAGE_META[pageId].crumb;
+
+    document.querySelector('.app-shell').classList.remove('mobile-open');
+
+    if (pageId === 'ai-pipeline') ASTRA_VIZ.renderPipelineFlow($('#pipelineFlow'));
+    if (pageId === 'settings') ASTRA_VIZ.renderArchDiagram($('#archDiagram'));
+    if (pageId === 'experiment-builder') renderBuilderList();
+  }
+
+  function initNav() {
+    $all('.nav-item').forEach(btn => btn.addEventListener('click', () => switchPage(btn.dataset.page)));
+    $all('[data-page-link]').forEach(btn => btn.addEventListener('click', () => switchPage(btn.dataset.pageLink)));
+    $('#sidebarToggle').addEventListener('click', () => document.querySelector('.app-shell').classList.toggle('collapsed'));
+    $('#mobileNavToggle').addEventListener('click', () => document.querySelector('.app-shell').classList.toggle('mobile-open'));
+  }
+
+  /* ------------------------------- CLOCK ------------------------------- */
+
+  function tickClock() {
+    $('#clockDisplay').textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  }
+
+  /* ------------------------------- MODULE STATUS PANELS ------------------------------- */
+
+  function renderModulePanels() {
+    ASTRA_VIZ.renderModuleStatusList($('#moduleStatusList'), MODULES);
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  /* ------------------------------- PERSON LIST / ACTIVITY HERO ------------------------------- */
+
+  function personCardHtml(record) {
+    return `
+      <div class="person-card">
+        <div class="person-card-head">
+          <span class="person-card-id">${ASTRA_ACTIVITY.formatPersonId(record.id)}</span>
+          <span class="person-card-conf">${record.confidence.toFixed(1)}%</span>
+        </div>
+        <div class="person-card-activity">${record.label.toUpperCase()}</div>
+        <div class="meter"><div class="meter-fill" style="width:${record.confidence}%"></div></div>
+      </div>`;
+  }
+
+  function renderPersonListInto(containerId, persons) {
+    const el = $(`#${containerId}`);
+    if (!el) return;
+    if (!persons.length) {
+      el.innerHTML = `<div class="person-list-empty">NO PERSONS DETECTED<br>Upload an image/video or start Live Camera.</div>`;
+      return;
+    }
+    el.innerHTML = persons.map(personCardHtml).join('');
+  }
+
+  function activityHeroHtml(record) {
+    if (!record) {
+      return `
+        <div class="activity-hero-name" style="font-size:20px;color:var(--text-2)">NO PERSON DETECTED</div>
+        <div class="activity-hero-conf">Upload an image/video or start Live Camera to begin analysis.</div>`;
+    }
+    return `
+      <div class="activity-hero-name">${record.label.toUpperCase()}</div>
+      <div class="activity-hero-conf">Confidence <span>${record.confidence.toFixed(1)}%</span></div>
+      <div class="meter"><div class="meter-fill" style="width:${record.confidence}%"></div></div>
+      <div class="activity-hero-meta">
+        <div><span class="lbl">Person</span><span class="val">${ASTRA_ACTIVITY.formatPersonId(record.id)}</span></div>
+        <div><span class="lbl">Duration</span><span class="val">${formatDuration(record.durationMs)}</span></div>
+      </div>`;
+  }
+
+  function updateDashboardHero(primary) {
+    if (!primary) {
+      $('#dashActivityName').textContent = '—';
+      $('#dashActivityConf').textContent = '—';
+      $('#dashActivityMeter').style.width = '0%';
+      $('#dashPersonId').textContent = '—';
+      $('#dashDuration').textContent = '00:00:00';
+      return;
+    }
+    $('#dashActivityName').textContent = primary.label.toUpperCase();
+    $('#dashActivityConf').textContent = `${primary.confidence.toFixed(1)}%`;
+    $('#dashActivityMeter').style.width = `${primary.confidence}%`;
+    $('#dashPersonId').textContent = ASTRA_ACTIVITY.formatPersonId(primary.id);
+    $('#dashDuration').textContent = formatDuration(primary.durationMs);
+  }
+
+  function renderGeneralActivityPage(allPersons) {
+    const primary = allPersons[0] || null;
+    const heroEl = $('#genPrimaryHero');
+    if (heroEl) heroEl.innerHTML = activityHeroHtml(primary);
+    renderPersonListInto('personListGeneral', allPersons);
+
+    const select = $('#historyPersonSelect');
+    if (select) {
+      const stillExists = allPersons.some(p => p.id === state.selectedHistoryPersonId);
+      if (!stillExists) state.selectedHistoryPersonId = primary ? primary.id : null;
+      select.innerHTML = allPersons.map(p => `<option value="${p.id}">${ASTRA_ACTIVITY.formatPersonId(p.id)}</option>`).join('')
+        || '<option value="">—</option>';
+      if (state.selectedHistoryPersonId != null) select.value = state.selectedHistoryPersonId;
+    }
+
+    const historyList = $('#personHistoryList');
+    if (historyList) {
+      const rec = state.selectedHistoryPersonId != null ? ASTRA_ACTIVITY.getById(state.selectedHistoryPersonId) : null;
+      historyList.innerHTML = rec && rec.history.length
+        ? rec.history.map(h => `
+            <div class="timeline-item success">
+              <div><div class="timeline-time">${h.time}</div><div class="timeline-text">${h.label.toUpperCase()}</div></div>
+            </div>`).join('')
+        : `<div class="person-list-empty">No history yet.</div>`;
+    }
+  }
+
+  function initHistoryPersonSelect() {
+    const select = $('#historyPersonSelect');
+    if (!select) return;
+    select.addEventListener('change', () => {
+      state.selectedHistoryPersonId = select.value ? Number(select.value) : null;
+      renderGeneralActivityPage(ASTRA_ACTIVITY.getAll());
+    });
+  }
+
+  /* ------------------------------- HAND-OBJECT / POSE / HMR PANELS ------------------------------- */
+
+  const HOI_TARGET = {
+    PICK_UP: { object: 'CHEMICAL BOTTLE', interaction: 'REACHING', steps: ['REACH', 'GRASP', 'LIFT'], activeStep: 0 },
+    OPEN_CAP: { object: 'CHEMICAL BOTTLE', interaction: 'MANIPULATING', steps: ['GRASP', 'TWIST', 'OPEN'], activeStep: 1 },
+    DRAW_LIQUID: { object: 'SYRINGE', interaction: 'DRAWING', steps: ['INSERT', 'DRAW', 'WITHDRAW'], activeStep: 1 },
+    POUR_LIQUID: { object: 'TEST TUBE', interaction: 'POURING', steps: ['ALIGN', 'POUR', 'RELEASE'], activeStep: 1 },
+    MIX: { object: 'TEST TUBE', interaction: 'MIXING', steps: ['GRASP', 'STIR', 'SETTLE'], activeStep: 1 },
+    PICKING_OBJECT: { object: 'RED BOX', interaction: 'REACHING', steps: ['REACH', 'GRASP', 'LIFT'], activeStep: 0 },
+    REACHING: { object: 'RED BOX', interaction: 'REACHING', steps: ['REACH', 'GRASP', 'LIFT'], activeStep: 0 },
+  };
+
+  function renderHoiPanel(primary) {
+    const box = $('#hoiBox');
+    if (!box) return;
+    const hoi = primary ? HOI_TARGET[primary.activity] : null;
+    if (hoi) {
+      box.innerHTML = `
+        <div class="hoi-hand">
+          <div class="hoi-hand-title">LEFT HAND</div>
+          <div class="hoi-flow"><span class="arrow">↓</span><span class="hoi-target">${hoi.object}</span></div>
+          <div class="hoi-meta"><span>Interaction</span><b>${hoi.interaction}</b></div>
+          <div class="hoi-meta"><span>Distance</span><b>${(10 + Math.random() * 8).toFixed(0)} cm</b></div>
+          <div class="hoi-steps">
+            ${hoi.steps.map((s, i) => `<span class="hoi-step ${i === hoi.activeStep ? 'active' : ''}">${s}</span>`).join('')}
+          </div>
+        </div>
+        <div class="hoi-hand"><div class="hoi-hand-title">RIGHT HAND</div><div class="hoi-idle">IDLE</div></div>`;
+    } else {
+      box.innerHTML = `
+        <div class="hoi-hand"><div class="hoi-hand-title">LEFT HAND</div><div class="hoi-idle">IDLE</div></div>
+        <div class="hoi-hand"><div class="hoi-hand-title">RIGHT HAND</div><div class="hoi-idle">IDLE</div></div>`;
+    }
+  }
+
+  function renderPosePanel(primary) {
+    const el = $('#poseInfoList');
+    if (!el) return;
+    const conf = primary ? primary.confidence : null;
+    el.innerHTML = kvHtml([
+      { k: 'Model', v: 'MediaPipe / YOLO Pose' },
+      { k: 'Keypoints', v: '14 (mock) · 33 (target)' },
+      { k: 'Confidence', v: conf != null ? `${conf.toFixed(1)}%` : '—', cls: 'green' },
+      { k: 'Tracking', v: primary ? 'ACTIVE' : 'IDLE', cls: primary ? 'cyan' : '' },
+      { k: 'Orientation', v: 'ARBITRARY', cls: 'orange' },
+    ]);
+  }
+
+  function renderHmrPanel() {
+    const el = $('#hmrInfoList');
+    if (!el) return;
+    el.innerHTML = kvHtml([
+      { k: 'Module', v: '3D Human Mesh Recovery' },
+      { k: 'Status', v: 'OPTIONAL MODULE', cls: 'orange' },
+      { k: 'Body Reference', v: 'PAYLOAD RACK' },
+      { k: 'Gravity Reference', v: 'NOT REQUIRED' },
+      { k: 'Orientation', v: 'ARBITRARY', cls: 'cyan' },
+    ]);
+  }
+
+  /* ------------------------------- OBJECT TABLE ------------------------------- */
+
+  function renderObjectTable(objects) {
+    const tbody = $('#objectTrackTable tbody');
+    if (!tbody) return;
+    if (!objects.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-2)">No objects detected</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = objects.map(o => `
+      <tr><td>OBJECT #${o.id}</td><td>${o.label.replace(/_/g, ' ')}</td><td>${o.confidence.toFixed(1)}%</td><td class="status-info">TRACKED</td></tr>
+    `).join('');
+  }
+
+  /* ------------------------------- DETECTION TICK (drives all AI-derived UI) ------------------------------- */
+
+  function onDetectionFrame(frame) {
+    state.latestFrame = frame;
+    ASTRA_ACTIVITY.update(frame.persons || []);
+
+    const allPersons = ASTRA_ACTIVITY.getAll();
+    const primary = allPersons[0] || null;
+
+    updateDashboardHero(primary);
+    renderDashExperimentMini(ASTRA_EXPERIMENT.getStatus());
+    renderPersonListInto('personListLive', allPersons);
+    renderObjectTable(frame.objects || []);
+    renderHoiPanel(primary);
+    renderPosePanel(primary);
+    renderGeneralActivityPage(allPersons);
+  }
+
+  /* ------------------------------- VISION CANVAS REDRAW LOOP ------------------------------- */
+
+  const CANVAS_IDS = ['overlayCanvasDash', 'overlayCanvasLive', 'overlayCanvasStream'];
+
+  function visionLoop() {
+    const idle = ASTRA_MEDIA.getType() === 'none';
+    const loadingReal = !idle && ASTRA_API.getDetectionMode() === 'REAL' && !ASTRA_API.isRealDetectionReady();
+    CANVAS_IDS.forEach(id => {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      if (idle) ASTRA_OVERLAY.drawPlaceholder(canvas, 'NO ACTIVE FEED — Upload an image/video or start Live Camera');
+      else if (loadingReal) ASTRA_OVERLAY.drawPlaceholder(canvas, 'LOADING REAL AI MODEL — one-time, then fully offline');
+      else ASTRA_OVERLAY.render(canvas, state.latestFrame);
+    });
+    requestAnimationFrame(visionLoop);
+  }
+
+  /* ------------------------------- MEDIA / CAMERA WIRING ------------------------------- */
+
+  async function populateDeviceSelect(selectEl) {
+    if (!selectEl) return;
+    const prior = selectEl.value;
+    const devices = await ASTRA_CAMERA.listVideoDevices();
+    if (devices.length === 0) {
+      selectEl.innerHTML = '<option value="">Default Camera</option>';
+      return;
+    }
+    selectEl.innerHTML = devices.map((d, i) => `<option value="${d.deviceId}">${d.label || `Camera ${i + 1}`}</option>`).join('');
+    if (prior && devices.some(d => d.deviceId === prior)) selectEl.value = prior;
+  }
+
+  function refreshAllDeviceSelects() {
+    populateDeviceSelect($('#cameraDeviceSelect'));
+    populateDeviceSelect($('#cameraDeviceSelect2'));
+  }
+
+  function wireMediaControls({ uploadId, cameraBtnId, deviceSelectId, playBtnId, clearBtnId }) {
+    const uploadInput = uploadId ? document.getElementById(uploadId) : null;
+    const cameraBtn = cameraBtnId ? document.getElementById(cameraBtnId) : null;
+    const deviceSelect = deviceSelectId ? document.getElementById(deviceSelectId) : null;
+    const playBtn = playBtnId ? document.getElementById(playBtnId) : null;
+    const clearBtn = clearBtnId ? document.getElementById(clearBtnId) : null;
+
+    if (deviceSelect) populateDeviceSelect(deviceSelect);
+
+    if (uploadInput) uploadInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      ASTRA_MEDIA.loadFile(file);
+      e.target.value = '';
+    });
+
+    if (cameraBtn) cameraBtn.addEventListener('click', async () => {
+      if (!ASTRA_CAMERA.isCameraSupported()) return;
+      const deviceId = deviceSelect ? deviceSelect.value || undefined : undefined;
+      await ASTRA_MEDIA.startCamera(deviceId);
+      refreshAllDeviceSelects();
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', () => ASTRA_MEDIA.stop());
+
+    if (playBtn) playBtn.addEventListener('click', () => {
+      const video = $('#videoFeedLive');
+      if (!video) return;
+      if (video.paused) {
+        video.play().catch(() => {});
+        playBtn.innerHTML = '<i data-lucide="pause"></i> Pause';
+      } else {
+        video.pause();
+        playBtn.innerHTML = '<i data-lucide="play"></i> Play';
+      }
+      if (window.lucide) window.lucide.createIcons();
+    });
+  }
+
+  function sourceLabelFor(mstate) {
+    if (mstate.type === 'camera') return `SOURCE: LIVE CAMERA${mstate.label ? ` — ${mstate.label}` : ''}`;
+    if (mstate.type === 'image') return `SOURCE: IMAGE — ${mstate.label}`;
+    if (mstate.type === 'video') return `SOURCE: VIDEO — ${mstate.label}`;
+    return 'SOURCE: IDLE';
+  }
+
+  /* ------------------------------- DETECTION MODE (REAL vs SIMULATED) ------------------------------- */
+
+  function detectionModeBadge() {
+    const mode = ASTRA_API.getDetectionMode();
+    if (mode === 'REAL') {
+      return ASTRA_API.isRealDetectionReady()
+        ? { text: '● REAL AI DETECTION', cls: 'tag-mode-real' }
+        : { text: 'LOADING REAL AI…', cls: 'tag-mode-loading' };
+    }
+    return { text: '● SIMULATED (MOCK)', cls: 'tag-mode-sim' };
+  }
+
+  function updateModeUI() {
+    const badge = detectionModeBadge();
+    ['dashModeTag', 'modeTagLive', 'streamModeTag'].forEach(id => {
+      const el = $(`#${id}`);
+      if (!el) return;
+      el.textContent = badge.text;
+      el.className = `tag ${badge.cls}`;
+    });
+
+    const mode = ASTRA_API.getDetectionMode();
+    $all('#detectionModeToggle .mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+      btn.classList.toggle('loading', mode === 'REAL' && btn.dataset.mode === 'REAL' && !ASTRA_API.isRealDetectionReady());
+    });
+
+    const hint = $('#detectionModeHint');
+    if (hint) {
+      hint.textContent = mode === 'REAL'
+        ? 'Real on-device detection (person + pose + generic objects, COCO classes only) — runs fully offline, no footage leaves this device.'
+        : 'Simulated mode acts out the full BAS pick-up → open-cap → draw-liquid → pour-liquid → mix → place-back sequence for demoing the FSM — independent of what the camera actually sees.';
+    }
+  }
+
+  function initDetectionModeToggle() {
+    $all('#detectionModeToggle .mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => ASTRA_API.setDetectionMode(btn.dataset.mode));
+    });
+    ASTRA_API.onModeChange(updateModeUI);
+    updateModeUI();
+  }
+
+  function initMediaPanels() {
+    ASTRA_MEDIA.registerPanel({ video: $('#videoFeedDash'), img: $('#imgFeedDash') });
+    ASTRA_MEDIA.registerPanel({ video: $('#videoFeedLive'), img: $('#imgFeedLive') });
+    ASTRA_MEDIA.registerPanel({ video: $('#videoFeedStream'), img: $('#imgFeedStream') });
+
+    ASTRA_MEDIA.subscribe((mstate) => {
+      const label = sourceLabelFor(mstate);
+      ['dashSourceTag', 'videoSourceTag'].forEach(id => { const el = $(`#${id}`); if (el) el.textContent = label; });
+    });
+
+    wireMediaControls({
+      uploadId: 'videoUploadInput', cameraBtnId: 'startCameraBtn', deviceSelectId: 'cameraDeviceSelect',
+      playBtnId: 'playPauseBtn', clearBtnId: 'clearFeedBtn',
+    });
+    wireMediaControls({
+      uploadId: 'videoUploadInput2', cameraBtnId: 'startCameraBtn2', deviceSelectId: 'cameraDeviceSelect2',
+    });
+
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', refreshAllDeviceSelects);
+    }
+  }
+
+  /* ------------------------------- EXPERIMENT MODE PAGE ------------------------------- */
+
+  function renderStepList(status) {
+    const el = $('#stepList');
+    if (!el) return;
+    el.innerHTML = status.sequence.map((s, i) => {
+      const isDone = i < status.currentIndex;
+      const isCurrent = i === status.currentIndex && !status.completed;
+      const cls = isDone ? 'done' : isCurrent ? 'current' : '';
+      const icon = isDone ? '✓' : isCurrent ? '●' : '○';
+      return `<div class="step-item ${cls}">
+        <div class="step-icon">${icon}</div>
+        <div class="step-label">${String(i + 1).padStart(2, '0')} ${s.label}</div>
+      </div>`;
+    }).join('');
+    $('#stepCurrent').textContent = status.completed ? status.totalSteps : status.currentStepNumber;
+    $('#stepTotal').textContent = status.totalSteps;
+  }
+
+  function renderFsmDiagram(status) {
+    const diagram = $('#fsmDiagram');
+    if (!diagram) return;
+    diagram.innerHTML = status.sequence.map((s, i) => {
+      const isDone = i < status.currentIndex;
+      const isCurrent = i === status.currentIndex && !status.completed;
+      const violated = isCurrent && status.status === 'INVALID';
+      const cls = violated ? 'violation' : isDone ? 'done' : isCurrent ? 'current' : '';
+      const arrow = i < status.sequence.length - 1 ? '<div class="fsm-arrow">↓</div>' : '';
+      return `<div class="fsm-node ${cls}">[ ${s.label} ]</div>${arrow}`;
+    }).join('');
+
+    const statusBox = $('#fsmStatusBox');
+    const detected = status.lastViolation ? status.lastViolation.detected : (status.status === 'VALID' ? status.expected : '—');
+    statusBox.innerHTML = `
+      <div class="dash-exp-row"><span>FSM STATUS</span><b style="color:${status.status === 'VALID' ? 'var(--green)' : 'var(--red)'}">${status.status}</b></div>
+      <div class="dash-exp-row"><span>Expected State</span><b>${status.expected}</b></div>
+      <div class="dash-exp-row"><span>Detected Activity</span><b>${detected}</b></div>
+      <div class="dash-exp-row"><span>Transition</span><b>${status.status === 'VALID' ? 'VALID' : 'INVALID'}</b></div>`;
+  }
+
+  function renderGuidance() {
+    const g = ASTRA_EXPERIMENT.getGuidance();
+    const box = $('#guidanceBox');
+    if (!box) return;
+    box.innerHTML = `
+      <div class="guidance-label">NEXT EXPECTED ACTION</div>
+      <div class="guidance-action">${g.action}</div>
+      <div class="guidance-instruction">"${g.instruction}"</div>
+      <div class="guidance-footer">
+        <span class="tag tag-green">VOICE: ON</span>
+        <button class="btn btn-outline btn-sm" id="repeatGuidanceBtn"><i data-lucide="volume-2"></i> Repeat</button>
+      </div>`;
+    $('#repeatGuidanceBtn').addEventListener('click', () => ASTRA_EXPERIMENT.repeatGuidance());
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function renderViolationPanel(status) {
+    const panel = $('#violationPanel');
+    const box = $('#violationBox');
+    if (!panel || !box) return;
+    if (status.status === 'INVALID' && status.lastViolation) {
+      panel.style.display = '';
+      const v = status.lastViolation;
+      box.innerHTML = `
+        <div class="violation-row"><span>Expected Activity</span><b>${v.expected}</b></div>
+        <div class="violation-row"><span>Detected Activity</span><b>${v.detected}</b></div>
+        <div class="violation-row"><span>Step</span><b>${v.step} / ${status.totalSteps}</b></div>
+        <div class="violation-row"><span>FSM Transition</span><b>INVALID</b></div>
+        <div class="violation-row"><span>Voice Alert</span><b style="color:var(--green)">ON</b></div>
+        <div class="violation-severity">SEVERITY: ${v.severity}</div>`;
+    } else {
+      panel.style.display = 'none';
+    }
+  }
+
+  function renderSimButtons(status) {
+    const grid = $('#simBtnGrid');
+    if (!grid) return;
+    const seen = new Set();
+    const uniqueSteps = status.sequence.filter(s => (seen.has(s.code) ? false : seen.add(s.code)));
+    grid.innerHTML = uniqueSteps.map(s => {
+      const idx = status.sequence.findIndex(x => x.code === s.code);
+      const done = idx < status.currentIndex;
+      return `<button class="sim-btn ${done ? 'done' : ''}" data-code="${s.code}">${s.label}</button>`;
+    }).join('');
+    grid.querySelectorAll('.sim-btn').forEach(btn => {
+      btn.addEventListener('click', () => ASTRA_EXPERIMENT.triggerActivity(btn.dataset.code));
+    });
+  }
+
+  function renderTimeline() {
+    const list1 = $('#timelineList');
+    const list2 = $('#historyTimelineList');
+    const items = ASTRA_EXPERIMENT.getTimeline();
+    const html = items.map(t => `
+      <div class="timeline-item ${t.cls}">
+        <div><div class="timeline-time">${t.time}</div><div class="timeline-text">${t.text}</div></div>
+      </div>`).join('');
+    if (list1) list1.innerHTML = html;
+    if (list2) list2.innerHTML = html;
+  }
+
+  function statusPillHtml(status) {
+    return status === 'SUCCESS' ? '<span class="status-success">SUCCESS</span>'
+      : status === 'VIOLATION' ? '<span class="status-violation">VIOLATION</span>'
+      : `<span class="status-info">${status}</span>`;
+  }
+
+  function renderEventTables() {
+    const log = ASTRA_EXPERIMENT.getEventLog();
+    const rowHtml = e => `<tr><td>${e.time}</td><td>${e.type}</td><td>${e.activity}</td><td>${e.confidence}</td><td>${e.expected}</td><td>${statusPillHtml(e.status)}</td></tr>`;
+    const dashBody = $('#dashEventTable tbody');
+    const fullBody = $('#fullEventTable tbody');
+    if (dashBody) dashBody.innerHTML = log.slice(0, 6).map(rowHtml).join('');
+    if (fullBody) fullBody.innerHTML = log.map(rowHtml).join('');
+  }
+
+  function renderDashExperimentMini(status) {
+    const el = $('#dashExperimentMini');
+    if (!el) return;
+    el.innerHTML = `
+      <div class="dash-exp-row"><span>Step</span><b>${status.completed ? status.totalSteps : status.currentStepNumber} / ${status.totalSteps}</b></div>
+      <div class="dash-exp-row"><span>Expected</span><b>${status.expected}</b></div>
+      <div class="dash-exp-row"><span>Detected</span><b>${status.lastViolation ? status.lastViolation.detected : status.expected}</b></div>
+      <div class="dash-exp-status ${status.status === 'VALID' ? 'status-valid' : 'status-invalid'}">
+        ${status.status === 'VALID' ? '✓ VALID TRANSITION' : '⚠ SEQUENCE VIOLATION'}
+      </div>`;
+  }
+
+  function showViolationToast(v) {
+    const stack = $('#toastStack');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `<i data-lucide="alert-triangle"></i>
+      <div class="toast-text">
+        <b>SEQUENCE VIOLATION</b><br>
+        Expected <b>${v.expected}</b>, detected <b>${v.detected}</b> at step ${v.step}.
+      </div>`;
+    stack.appendChild(toast);
+    if (window.lucide) window.lucide.createIcons();
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .4s'; setTimeout(() => toast.remove(), 400); }, 5000);
+  }
+
+  function renderExperimentPage(status) {
+    renderStepList(status);
+    renderFsmDiagram(status);
+    renderGuidance();
+    renderViolationPanel(status);
+    renderSimButtons(status);
+    renderTimeline();
+    renderEventTables();
+    renderDashExperimentMini(status);
+
+    if (status.lastViolation && status.lastViolation !== state.lastViolationRef) {
+      state.lastViolationRef = status.lastViolation;
+      showViolationToast(status.lastViolation);
+    }
+    if (status.status === 'VALID') state.lastViolationRef = null;
+  }
+
+  function initExperimentControls() {
+    $('#simulateViolationBtn').addEventListener('click', () => ASTRA_EXPERIMENT.simulateViolation());
+    $('#resetExperimentBtn').addEventListener('click', () => ASTRA_EXPERIMENT.reset());
+    $('#exportLogBtn').addEventListener('click', () => ASTRA_EXPERIMENT.exportEventLogTxt());
+    ASTRA_EXPERIMENT.subscribe(renderExperimentPage);
+    renderExperimentPage(ASTRA_EXPERIMENT.getStatus());
+  }
+
+  /* ------------------------------- EXPERIMENT BUILDER PAGE ------------------------------- */
+
+  function populateStepActivitySelect() {
+    const sel = $('#stepActivitySelect');
+    sel.innerHTML = ASTRA_EXPERIMENT.getActivityMasterList().map(a => `<option value="${a.code}">${a.label}</option>`).join('');
+  }
+
+  let builderSelectedIndex = -1;
+
+  function renderBuilderList() {
+    const el = $('#builderStepList');
+    if (!el) return;
+    if (state.builderSteps.length === 0) {
+      el.innerHTML = `<div class="builder-empty">No steps added yet. Choose an activity and click "Add Step".</div>`;
+      return;
+    }
+    el.innerHTML = state.builderSteps.map((s, i) => `
+      <div class="builder-item ${i === builderSelectedIndex ? 'selected' : ''}" data-idx="${i}">
+        <span class="idx">${String(i + 1).padStart(2, '0')}</span>
+        <span class="name">${s.label}</span>
+      </div>`).join('');
+    el.querySelectorAll('.builder-item').forEach(item => {
+      item.addEventListener('click', () => { builderSelectedIndex = Number(item.dataset.idx); renderBuilderList(); });
+    });
+  }
+
+  function initBuilder() {
+    populateStepActivitySelect();
+    renderBuilderList();
+
+    $('#addStepBtn').addEventListener('click', () => {
+      const sel = $('#stepActivitySelect');
+      const code = sel.value;
+      const label = sel.options[sel.selectedIndex].textContent.toUpperCase();
+      state.builderSteps.push({ code, label });
+      renderBuilderList();
+    });
+
+    $('#removeStepBtn').addEventListener('click', () => {
+      if (builderSelectedIndex < 0) return;
+      state.builderSteps.splice(builderSelectedIndex, 1);
+      builderSelectedIndex = -1;
+      renderBuilderList();
+    });
+
+    $('#moveUpBtn').addEventListener('click', () => {
+      if (builderSelectedIndex <= 0) return;
+      const arr = state.builderSteps;
+      [arr[builderSelectedIndex - 1], arr[builderSelectedIndex]] = [arr[builderSelectedIndex], arr[builderSelectedIndex - 1]];
+      builderSelectedIndex -= 1;
+      renderBuilderList();
+    });
+
+    $('#moveDownBtn').addEventListener('click', () => {
+      if (builderSelectedIndex < 0 || builderSelectedIndex >= state.builderSteps.length - 1) return;
+      const arr = state.builderSteps;
+      [arr[builderSelectedIndex + 1], arr[builderSelectedIndex]] = [arr[builderSelectedIndex], arr[builderSelectedIndex + 1]];
+      builderSelectedIndex += 1;
+      renderBuilderList();
+    });
+
+    $('#saveExperimentBtn').addEventListener('click', () => {
+      const name = $('#expNameInput').value.trim() || 'Untitled Experiment';
+      const hint = $('#builderHint');
+      if (state.builderSteps.length === 0) {
+        hint.textContent = 'Add at least one step before saving.';
+        hint.style.color = 'var(--red)';
+        return;
+      }
+      const codes = state.builderSteps.map(s => s.code);
+      ASTRA_EXPERIMENT.setSequence(name, codes);
+      ASTRA_API.createExperiment({ name, steps: codes });
+      hint.textContent = `"${name}" saved and loaded into the active FSM — switch to Experiment Mode to run it.`;
+      hint.style.color = 'var(--green)';
+    });
+  }
+
+  /* ------------------------------- SYSTEM MONITOR ------------------------------- */
+
+  let opencvFramesProcessed = 128421;
+
+  function renderHwMetricGrid(m) {
+    const grid = $('#hwMetricGrid');
+    if (!grid) return;
+    const items = [
+      { label: 'CPU', value: m.cpu, cls: 'cyan' }, { label: 'GPU', value: m.gpu, cls: 'green' },
+      { label: 'RAM', value: m.ram, cls: 'cyan' }, { label: 'VRAM', value: m.vram, cls: 'orange' },
+    ];
+    grid.innerHTML = items.map(it => `
+      <div class="metric-card">
+        <div class="m-label">${it.label}</div>
+        <div class="m-value ${it.cls}">${it.value.toFixed(0)}%</div>
+        <div class="bar"><div class="bar-fill" style="width:${it.value}%;background:var(--${it.cls === 'cyan' ? 'cyan' : it.cls === 'green' ? 'green' : 'orange'})"></div></div>
+      </div>`).join('');
+  }
+
+  function renderSysMiniGrid(m) {
+    const grid = $('#sysMiniGrid');
+    if (!grid) return;
+    const items = [{ label: 'CPU', value: m.cpu }, { label: 'GPU', value: m.gpu }, { label: 'RAM', value: m.ram }, { label: 'VRAM', value: m.vram }];
+    grid.innerHTML = items.map(it => `
+      <div class="sys-mini-item">
+        <div class="lbl">${it.label}</div>
+        <div class="val">${it.value.toFixed(0)}%</div>
+        <div class="bar"><div class="bar-fill" style="width:${it.value}%"></div></div>
+      </div>`).join('');
+  }
+
+  function renderModelInfo(m) {
+    const el = $('#modelInfoList');
+    if (!el) return;
+    el.innerHTML = kvHtml([
+      { k: 'Model', v: m.model, cls: 'cyan' }, { k: 'Temporal Model', v: m.temporal_model, cls: 'cyan' },
+      { k: 'Device', v: m.device, cls: 'green' }, { k: 'Inference FPS', v: m.inference_fps },
+      { k: 'Latency', v: `${m.latency_ms} ms` }, { k: 'YOLO FPS', v: m.yolo_fps },
+      { k: 'Pose FPS', v: m.pose_fps }, { k: 'HAR FPS', v: m.har_fps },
+    ]);
+  }
+
+  function renderOpencvPanel(m) {
+    const el = $('#opencvInfoList');
+    if (!el) return;
+    opencvFramesProcessed += m.inference_fps;
+    el.innerHTML = kvHtml([
+      { k: 'Status', v: 'ACTIVE', cls: 'green' }, { k: 'Resolution', v: '1920 × 1080' }, { k: 'FPS', v: '30' },
+      { k: 'Frames Processed', v: opencvFramesProcessed.toLocaleString() },
+      { k: 'Latency', v: `${m.latency_ms} ms` }, { k: 'Processing', v: 'LOCAL', cls: 'green' },
+    ]);
+  }
+
+  function renderEdgePanel() {
+    const el = $('#edgeInfoList');
+    if (!el) return;
+    el.innerHTML = kvHtml([
+      { k: 'Internet', v: 'NOT REQUIRED', cls: 'green' }, { k: 'Inference', v: 'ON DEVICE', cls: 'green' },
+      { k: 'Video', v: 'LOCAL', cls: 'green' }, { k: 'Model', v: 'ON DEVICE', cls: 'green' },
+      { k: 'Data', v: 'LOCAL', cls: 'green' }, { k: 'Ground Communication', v: 'OPTIONAL', cls: 'orange' },
+      { k: 'Status', v: '● OFFLINE CAPABLE', cls: 'green' },
+    ]);
+  }
+
+  function renderStreamingPanels(m) {
+    const ff = $('#ffmpegInfoList');
+    if (ff) ff.innerHTML = kvHtml([
+      { k: 'Recording', v: 'ACTIVE', cls: 'green' }, { k: 'Encoding', v: 'H.264' }, { k: 'IP Streaming', v: 'ACTIVE', cls: 'green' },
+      { k: 'Container', v: 'MPEG-TS' }, { k: 'Bitrate', v: `${(3.2 + Math.random() * 0.6).toFixed(1)} Mbps` },
+    ]);
+    const st = $('#streamInfoList');
+    if (st) st.innerHTML = kvHtml([
+      { k: 'Destination', v: '192.168.1.100:8080', cls: 'cyan' }, { k: 'Protocol', v: 'RTSP', cls: 'cyan' },
+      { k: 'Status', v: '● STREAMING', cls: 'green' }, { k: 'Latency', v: `${m.latency_ms} ms` },
+      { k: 'Frames Sent', v: opencvFramesProcessed.toLocaleString() },
+    ]);
+  }
+
+  function updateVisionHud(videoId, imgId, resId, fpsId, mockFps) {
+    const video = document.getElementById(videoId);
+    const img = document.getElementById(imgId);
+    const resEl = document.getElementById(resId);
+    const fpsEl = document.getElementById(fpsId);
+    if (!resEl || !fpsEl) return;
+    const type = ASTRA_MEDIA.getType();
+
+    if (type === 'camera') {
+      const live = ASTRA_CAMERA.getLiveTelemetry();
+      if (live && live.width && live.height) {
+        resEl.textContent = `${live.width}×${live.height}`;
+        fpsEl.textContent = live.frameRate ? `${live.frameRate} FPS · LIVE` : 'LIVE CAM';
+        return;
+      }
+    } else if (type === 'video' && video && video.videoWidth) {
+      resEl.textContent = `${video.videoWidth}×${video.videoHeight}`;
+      fpsEl.textContent = `${mockFps} FPS`;
+      return;
+    } else if (type === 'image' && img && img.naturalWidth) {
+      resEl.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
+      fpsEl.textContent = 'STATIC';
+      return;
+    }
+    resEl.textContent = '1920×1080';
+    fpsEl.textContent = `${mockFps} FPS`;
+  }
+
+  function pollSystemMetrics() {
+    ASTRA_API.getSystemMetrics().then(m => {
+      renderHwMetricGrid(m);
+      renderSysMiniGrid(m);
+      renderModelInfo(m);
+      renderOpencvPanel(m);
+      renderEdgePanel();
+      renderStreamingPanels(m);
+      ASTRA_VIZ.pushPerfSample(m.inference_fps, m.latency_ms);
+      updateVisionHud('videoFeedDash', 'imgFeedDash', 'visionResDash', 'visionFpsDash', m.inference_fps);
+      updateVisionHud('videoFeedLive', 'imgFeedLive', 'visionResLive', 'visionFpsLive', m.inference_fps);
+      updateVisionHud('videoFeedStream', 'imgFeedStream', 'visionResStream', 'visionFpsStream', m.inference_fps);
+    });
+  }
+
+  /* ------------------------------- SETTINGS PAGE ------------------------------- */
+
+  function renderConnStatusPill(mode) {
+    const pill = $('#connStatus');
+    pill.innerHTML = mode === 'LIVE'
+      ? '<span class="dot dot-green pulse"></span><span>BACKEND: LIVE</span>'
+      : '<span class="dot dot-orange"></span><span>BACKEND: MOCK MODE</span>';
+  }
+
+  function initSettings() {
+    $('#tryConnectBtn').addEventListener('click', () => {
+      const base = $('#apiBaseInput').value.trim();
+      const ws = $('#wsUrlInput').value.trim();
+      const list = $('#settingsConnList');
+      list.innerHTML = kvHtml([{ k: 'Status', v: 'CONNECTING…', cls: 'cyan' }]);
+      ASTRA_API.tryConnectBackend(base, ws).then(res => {
+        renderConnStatusPill(res.mode);
+        list.innerHTML = kvHtml([
+          { k: 'Connected', v: res.connected ? 'YES' : 'NO', cls: res.connected ? 'green' : 'orange' },
+          { k: 'Mode', v: res.mode, cls: res.mode === 'LIVE' ? 'green' : 'orange' },
+          { k: 'API Base', v: base }, { k: 'WebSocket', v: ws },
+        ]);
+      });
+    });
+  }
+
+  /* ------------------------------- INIT ------------------------------- */
+
+  function init() {
+    initNav();
+    renderModulePanels();
+    renderHoiPanel(null);
+    renderPosePanel(null);
+    renderHmrPanel();
+    initExperimentControls();
+    initBuilder();
+    initSettings();
+    initHistoryPersonSelect();
+    initMediaPanels();
+    initDetectionModeToggle();
+
+    ASTRA_VIZ.initPerfChart($('#perfChart'));
+
+    ASTRA_API.setRealDetectionElements({ video: $('#videoFeedLive'), img: $('#imgFeedLive') });
+    ASTRA_API.connectWebSocket(onDetectionFrame);
+
+    tickClock();
+    setInterval(tickClock, 1000);
+    setInterval(pollSystemMetrics, 1200);
+    pollSystemMetrics();
+
+    switchPage('dashboard');
+    requestAnimationFrame(visionLoop);
+
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();

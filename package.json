@@ -1,0 +1,12 @@
+{
+  "name": "astra-har",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ASTRA-HAR frontend dev server. The frontend itself is plain HTML/CSS/vanilla JS with zero build step — this only adds a local server with live reload for convenience.",
+  "scripts": {
+    "dev": "live-server frontend --port=5173 --no-browser"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}

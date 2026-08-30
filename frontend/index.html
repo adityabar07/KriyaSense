@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTRA-HAR | AI Human Activity Recognition &amp; Experiment Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><i data-lucide="radar"></i></div>
+      <div class="brand-text">
+        <span class="brand-title">ASTRA-HAR</span>
+        <span class="brand-sub">Mission Vision System</span>
+      </div>
+      <button class="sidebar-toggle" id="sidebarToggle" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+    </div>
+
+    <nav class="nav" id="navMenu">
+      <button class="nav-item active" data-page="dashboard"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></button>
+      <button class="nav-item" data-page="live-analysis"><i data-lucide="scan-eye"></i><span>Live Analysis</span></button>
+      <button class="nav-item" data-page="general-activity"><i data-lucide="activity"></i><span>General Activity</span></button>
+      <button class="nav-item" data-page="experiment-mode"><i data-lucide="flask-conical"></i><span>Experiment Mode</span></button>
+      <button class="nav-item" data-page="experiment-builder"><i data-lucide="list-plus"></i><span>Experiment Builder</span></button>
+      <button class="nav-item" data-page="activity-history"><i data-lucide="history"></i><span>Activity History</span></button>
+      <button class="nav-item" data-page="ai-pipeline"><i data-lucide="git-branch"></i><span>AI Pipeline</span></button>
+      <button class="nav-item" data-page="system-monitor"><i data-lucide="cpu"></i><span>System Monitor</span></button>
+      <button class="nav-item" data-page="video-streaming"><i data-lucide="satellite-dish"></i><span>Video Streaming</span></button>
+      <button class="nav-item" data-page="settings"><i data-lucide="settings"></i><span>Settings</span></button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="edge-chip">
+        <span class="dot dot-green pulse"></span>
+        <div>
+          <div class="edge-chip-title">EDGE AI · OFFLINE CAPABLE</div>
+          <div class="edge-chip-sub">Local inference · No network required</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="main-area">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" id="mobileNavToggle"><i data-lucide="menu"></i></button>
+        <h1 class="page-title" id="pageTitle">Dashboard</h1>
+        <span class="page-crumb" id="pageCrumb">Mission Overview</span>
+      </div>
+      <div class="topbar-right">
+        <div class="status-pill" id="connStatus">
+          <span class="dot dot-orange"></span>
+          <span>BACKEND: MOCK MODE</span>
+        </div>
+        <div class="status-pill">
+          <span class="dot dot-green pulse"></span>
+          <span id="analysisState">ANALYSIS: RUNNING</span>
+        </div>
+        <div class="clock-box">
+          <i data-lucide="clock-4"></i>
+          <span id="clockDisplay">00:00:00</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- PAGE CONTENT -->
+    <main class="page-content" id="pageContent">
+
+      <!-- ================= DASHBOARD ================= -->
+      <section class="page active" id="page-dashboard">
+        <div class="grid grid-dash">
+
+          <div class="panel panel-vision span-8">
+            <div class="panel-head">
+              <div class="panel-head-title"><i data-lucide="video"></i> LIVE AI VISION FEED</div>
+              <div class="panel-head-tags">
+                <span class="tag" id="dashModeTag">…</span>
+                <span class="tag tag-cyan" id="dashSourceTag">SOURCE: IDLE</span>
+              </div>
+            </div>
+            <div class="vision-stage" id="visionStageDash">
+              <video id="videoFeedDash" class="vision-video" autoplay muted playsinline hidden></video>
+              <img id="imgFeedDash" class="vision-image" alt="Uploaded frame" hidden>
+              <canvas id="overlayCanvasDash" class="vision-overlay"></canvas>
+              <div class="vision-scanline"></div>
+              <div class="vision-corner tl"></div><div class="vision-corner tr"></div>
+              <div class="vision-corner bl"></div><div class="vision-corner br"></div>
+              <div class="vision-hud-top">
+                <span>REC ●</span><span id="visionResDash">1920×1080</span><span id="visionFpsDash">30 FPS</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="brain-circuit"></i> AI MODULE STATUS</div></div>
+            <div class="module-status-list" id="moduleStatusList"></div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="user-check"></i> CURRENT ACTIVITY</div></div>
+            <div class="activity-hero">
+              <div class="activity-hero-name" id="dashActivityName">WALKING</div>
+              <div class="activity-hero-conf">Confidence <span id="dashActivityConf">96.4%</span></div>
+              <div class="meter"><div class="meter-fill" id="dashActivityMeter" style="width:96.4%"></div></div>
+              <div class="activity-hero-meta">
+                <div><span class="lbl">Person</span><span class="val" id="dashPersonId">#01</span></div>
+                <div><span class="lbl">Duration</span><span class="val" id="dashDuration">00:04:28</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="flask-conical"></i> EXPERIMENT STATUS</div></div>
+            <div id="dashExperimentMini" class="dash-exp-mini"></div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="server-cog"></i> SYSTEM LOAD</div></div>
+            <div class="sys-mini-grid" id="sysMiniGrid"></div>
+          </div>
+
+          <div class="panel span-12">
+            <div class="panel-head">
+              <div class="panel-head-title"><i data-lucide="list"></i> RECENT EVENTS</div>
+              <button class="btn btn-ghost btn-sm" data-page-link="activity-history">View Full Log <i data-lucide="arrow-right"></i></button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="dashEventTable">
+                <thead><tr><th>TIME</th><th>TYPE</th><th>ACTIVITY</th><th>CONF.</th><th>EXPECTED</th><th>STATUS</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= LIVE ANALYSIS ================= -->
+      <section class="page" id="page-live-analysis">
+        <div class="grid grid-live">
+
+          <div class="panel panel-vision span-8">
+            <div class="panel-head">
+              <div class="panel-head-title"><i data-lucide="scan-eye"></i> LIVE AI VISION — DETECTION OVERLAY</div>
+              <div class="panel-head-tags">
+                <span class="tag" id="modeTagLive">…</span>
+                <span class="tag tag-cyan" id="videoSourceTag">SOURCE: IDLE</span>
+              </div>
+            </div>
+            <div class="vision-stage" id="visionStageLive">
+              <video id="videoFeedLive" class="vision-video" autoplay muted playsinline hidden></video>
+              <img id="imgFeedLive" class="vision-image" alt="Uploaded frame" hidden>
+              <canvas id="overlayCanvasLive" class="vision-overlay"></canvas>
+              <div class="vision-scanline"></div>
+              <div class="vision-corner tl"></div><div class="vision-corner tr"></div>
+              <div class="vision-corner bl"></div><div class="vision-corner br"></div>
+              <div class="vision-hud-top">
+                <span>REC ●</span><span id="visionResLive">1920×1080</span><span id="visionFpsLive">30 FPS</span>
+              </div>
+            </div>
+            <div class="video-controls">
+              <div class="mode-toggle" id="detectionModeToggle">
+                <button class="mode-btn" data-mode="REAL">REAL DETECTION</button>
+                <button class="mode-btn" data-mode="SIMULATED">SIMULATED (BAS DEMO)</button>
+              </div>
+            </div>
+            <div class="video-controls">
+              <label class="btn btn-outline">
+                <i data-lucide="upload"></i> Upload Image / Video
+                <input type="file" id="videoUploadInput" accept="image/*,video/*" hidden>
+              </label>
+              <select id="cameraDeviceSelect" class="form-input select-compact" title="Select camera device"></select>
+              <button class="btn btn-outline" id="startCameraBtn"><i data-lucide="camera"></i> Live Camera</button>
+              <button class="btn btn-outline" id="playPauseBtn"><i data-lucide="play"></i> Play</button>
+              <button class="btn btn-outline" id="clearFeedBtn"><i data-lucide="x"></i> Clear Feed</button>
+            </div>
+            <div class="hint-text" id="detectionModeHint">No footage leaves this device — playback and inference are fully local.</div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="users"></i> DETECTED PERSONS</div></div>
+            <div class="person-list" id="personListLive"></div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="hand"></i> HAND-OBJECT INTERACTION</div></div>
+            <div class="hoi-box" id="hoiBox"></div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="person-standing"></i> POSE ESTIMATION</div></div>
+            <div class="kv-list" id="poseInfoList"></div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="orbit"></i> ORIENTATION-AGNOSTIC MODULE</div></div>
+            <div class="kv-list" id="hmrInfoList"></div>
+            <div class="badge-optional">OPTIONAL MODULE — 3D HUMAN MESH RECOVERY (HMR)</div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="scan-search"></i> DETECTED OBJECTS</div></div>
+            <div class="table-wrap">
+              <table class="data-table" id="objectTrackTable">
+                <thead><tr><th>TRACK ID</th><th>OBJECT</th><th>CONFIDENCE</th><th>STATE</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= GENERAL ACTIVITY ================= -->
+      <section class="page" id="page-general-activity">
+        <div class="grid grid-general">
+          <div class="panel span-5">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="user-check"></i> PRIMARY PERSON</div></div>
+            <div class="activity-hero big" id="genPrimaryHero"></div>
+          </div>
+          <div class="panel span-7">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="users"></i> ALL DETECTED PERSONS</div></div>
+            <div class="person-list" id="personListGeneral"></div>
+          </div>
+          <div class="panel span-12">
+            <div class="panel-head">
+              <div class="panel-head-title"><i data-lucide="history"></i> ACTIVITY HISTORY</div>
+              <select id="historyPersonSelect" class="form-input select-compact" title="Select person"></select>
+            </div>
+            <div class="timeline" id="personHistoryList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= EXPERIMENT MODE ================= -->
+      <section class="page" id="page-experiment-mode">
+        <div class="grid grid-exp">
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="list-ordered"></i> EXPERIMENT SEQUENCE</div></div>
+            <div class="step-list" id="stepList"></div>
+            <div class="step-progress">
+              <span>STEP <b id="stepCurrent">3</b> / <span id="stepTotal">6</span></span>
+            </div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="git-compare"></i> FINITE STATE MACHINE</div></div>
+            <div class="fsm-diagram" id="fsmDiagram"></div>
+            <div class="fsm-status" id="fsmStatusBox"></div>
+          </div>
+
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="megaphone"></i> NEXT STEP GUIDANCE</div></div>
+            <div class="guidance-box" id="guidanceBox"></div>
+          </div>
+
+          <div class="panel span-6" id="violationPanel" style="display:none;">
+            <div class="panel-head"><div class="panel-head-title alert-title"><i data-lucide="alert-triangle"></i> SEQUENCE VIOLATION</div></div>
+            <div class="violation-box" id="violationBox"></div>
+          </div>
+
+          <div class="panel span-6">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="sliders-horizontal"></i> AI SIMULATION — DEMO CONTROLS</div></div>
+            <div class="sim-btn-grid" id="simBtnGrid"></div>
+            <div class="sim-btn-row">
+              <button class="btn btn-danger" id="simulateViolationBtn"><i data-lucide="alert-triangle"></i> SIMULATE VIOLATION</button>
+              <button class="btn btn-outline" id="resetExperimentBtn"><i data-lucide="rotate-ccw"></i> RESET</button>
+            </div>
+          </div>
+
+          <div class="panel span-12">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="waypoints"></i> ACTIVITY TIMELINE</div></div>
+            <div class="timeline" id="timelineList"></div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= EXPERIMENT BUILDER ================= -->
+      <section class="page" id="page-experiment-builder">
+        <div class="grid grid-builder">
+          <div class="panel span-5">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="pencil-ruler"></i> NEW EXPERIMENT</div></div>
+            <div class="form-block">
+              <label class="form-label">Experiment Name</label>
+              <input type="text" id="expNameInput" class="form-input" placeholder="e.g. BAS Sample Handling Protocol">
+
+              <label class="form-label">Add Step</label>
+              <div class="form-row">
+                <select id="stepActivitySelect" class="form-input"></select>
+                <button class="btn btn-primary" id="addStepBtn"><i data-lucide="plus"></i> Add Step</button>
+              </div>
+
+              <div class="builder-actions">
+                <button class="btn btn-outline btn-sm" id="moveUpBtn"><i data-lucide="arrow-up"></i> Move Up</button>
+                <button class="btn btn-outline btn-sm" id="moveDownBtn"><i data-lucide="arrow-down"></i> Move Down</button>
+                <button class="btn btn-outline btn-sm" id="removeStepBtn"><i data-lucide="trash-2"></i> Remove</button>
+              </div>
+
+              <button class="btn btn-primary btn-block" id="saveExperimentBtn"><i data-lucide="save"></i> Save Experiment &amp; Load into FSM</button>
+              <div class="hint-text" id="builderHint">Build a step sequence, then save it to replace the active experiment FSM.</div>
+            </div>
+          </div>
+          <div class="panel span-7">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="list-ordered"></i> SEQUENCE PREVIEW</div></div>
+            <div class="builder-list" id="builderStepList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ACTIVITY HISTORY ================= -->
+      <section class="page" id="page-activity-history">
+        <div class="grid grid-history">
+          <div class="panel span-4">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="waypoints"></i> TIMELINE</div></div>
+            <div class="timeline" id="historyTimelineList"></div>
+          </div>
+          <div class="panel span-8">
+            <div class="panel-head">
+              <div class="panel-head-title"><i data-lucide="scroll-text"></i> EVENT LOG</div>
+              <button class="btn btn-primary btn-sm" id="exportLogBtn"><i data-lucide="download"></i> EXPORT TXT LOG</button>
+            </div>
+            <div class="table-wrap tall">
+              <table class="data-table" id="fullEventTable">
+                <thead><tr><th>TIME</th><th>TYPE</th><th>ACTIVITY</th><th>CONFIDENCE</th><th>EXPECTED</th><th>STATUS</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= AI PIPELINE ================= -->
+      <section class="page" id="page-ai-pipeline">
+        <div class="grid grid-pipeline">
+          <div class="panel span-12">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="git-branch"></i> END-TO-END AI PROCESSING PIPELINE</div></div>
+            <div class="pipeline-flow" id="pipelineFlow"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SYSTEM MONITOR ================= -->
+      <section class="page" id="page-system-monitor">
+        <div class="grid grid-monitor">
+          <div class="panel span-12">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="cpu"></i> HARDWARE UTILIZATION</div></div>
+            <div class="metric-grid" id="hwMetricGrid"></div>
+          </div>
+
+          <div class="panel span-7">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="line-chart"></i> INFERENCE FPS / LATENCY</div></div>
+            <canvas id="perfChart" height="220"></canvas>
+          </div>
+
+          <div class="panel span-5">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="info"></i> MODEL INFO</div></div>
+            <div class="kv-list" id="modelInfoList"></div>
+          </div>
+
+          <div class="panel span-6">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="scan"></i> OPENCV PROCESSING</div></div>
+            <div class="kv-list" id="opencvInfoList"></div>
+          </div>
+
+          <div class="panel span-6 edge-panel">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="wifi-off"></i> OFFLINE EDGE AI</div></div>
+            <div class="kv-list" id="edgeInfoList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VIDEO STREAMING ================= -->
+      <section class="page" id="page-video-streaming">
+        <div class="grid grid-streaming">
+          <div class="panel span-6">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="film"></i> FFmpeg / GStreamer</div></div>
+            <div class="kv-list" id="ffmpegInfoList"></div>
+          </div>
+          <div class="panel span-6">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="satellite-dish"></i> IP STREAMING</div></div>
+            <div class="kv-list" id="streamInfoList"></div>
+          </div>
+          <div class="panel span-12">
+            <div class="panel-head">
+              <div class="panel-head-title"><i data-lucide="video"></i> VIDEO INPUT SOURCE</div>
+              <div class="panel-head-tags"><span class="tag" id="streamModeTag">…</span></div>
+            </div>
+            <div class="vision-stage" id="visionStageStream">
+              <video id="videoFeedStream" class="vision-video" autoplay muted playsinline hidden></video>
+              <img id="imgFeedStream" class="vision-image" alt="Uploaded frame" hidden>
+              <canvas id="overlayCanvasStream" class="vision-overlay"></canvas>
+              <div class="vision-hud-top">
+                <span>REC ●</span><span id="visionResStream">1920×1080</span><span id="visionFpsStream">30 FPS</span>
+              </div>
+            </div>
+            <div class="video-controls">
+              <label class="btn btn-outline">
+                <i data-lucide="upload"></i> Upload Image / Video
+                <input type="file" id="videoUploadInput2" accept="image/*,video/*" hidden>
+              </label>
+              <select id="cameraDeviceSelect2" class="form-input select-compact" title="Select camera device"></select>
+              <button class="btn btn-outline" id="startCameraBtn2"><i data-lucide="camera"></i> Live Camera</button>
+              <span class="hint-text">This is the same shared feed shown across the dashboard — recording/streaming below is simulated, no data leaves the device.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SETTINGS ================= -->
+      <section class="page" id="page-settings">
+        <div class="grid grid-settings">
+          <div class="panel span-5">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="plug-zap"></i> BACKEND CONNECTION</div></div>
+            <div class="form-block">
+              <label class="form-label">Backend API Base URL</label>
+              <input type="text" id="apiBaseInput" class="form-input" value="http://localhost:8000">
+              <label class="form-label">WebSocket Endpoint</label>
+              <input type="text" id="wsUrlInput" class="form-input" value="ws://localhost:8000/ws/ai-stream">
+              <button class="btn btn-primary btn-block" id="tryConnectBtn"><i data-lucide="rss"></i> Attempt Backend Connection</button>
+              <div class="hint-text">If the backend is unreachable, ASTRA-HAR automatically continues on local mock data — the UI never blocks.</div>
+              <div class="kv-list" id="settingsConnList"></div>
+            </div>
+          </div>
+          <div class="panel span-7">
+            <div class="panel-head"><div class="panel-head-title"><i data-lucide="layers"></i> FRONTEND ↔ BACKEND ARCHITECTURE</div></div>
+            <div class="arch-diagram" id="archDiagram"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- Hidden audio-visual toast for voice alerts -->
+<div class="toast-stack" id="toastStack"></div>
+
+<script src="js/media.js"></script>
+<script src="js/camera.js"></script>
+<script src="js/detection.js"></script>
+<script src="js/tracking.js"></script>
+<script src="js/activity.js"></script>
+<script src="js/overlay.js"></script>
+<script src="js/real_detection.js"></script>
+<script src="js/experiment.js"></script>
+<script src="js/visualization.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
