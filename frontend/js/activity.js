@@ -24,6 +24,8 @@ const ASTRA_ACTIVITY = (() => {
     WRITING: 'Writing',
     PHONE_USE: 'Using Phone',
     USE_LAPTOP: 'Using Laptop',
+    USING_LAPTOP: 'Using Laptop',
+    USING_PHONE: 'Using Phone',
     PICKING_OBJECT: 'Picking Object',
     PUT_OBJECT_DOWN: 'Putting Object Down',
     OPENING: 'Opening',
@@ -31,6 +33,7 @@ const ASTRA_ACTIVITY = (() => {
     REACHING: 'Reaching',
     CARRYING: 'Carrying',
     LYING_DOWN: 'Lying Down',
+    UNCERTAIN: 'Uncertain',
   };
 
   const persons = new Map(); // id -> record
@@ -56,11 +59,12 @@ const ASTRA_ACTIVITY = (() => {
       seenIds.add(p.id);
       let rec = persons.get(p.id);
       if (!rec) {
-        rec = { id: p.id, activity: p.activity, confidence: p.confidence, since: now, previous: null, history: [] };
+        rec = { id: p.id, activity: p.activity, confidence: p.confidence, reason: p.harReason || null, since: now, previous: null, history: [] };
         rec.history.unshift({ time: nowStr(), label: labelFor(p.activity) });
         persons.set(p.id, rec);
       } else {
         rec.confidence = p.confidence;
+        rec.reason = p.harReason || null;
         if (rec.activity !== p.activity) {
           rec.previous = rec.activity;
           rec.activity = p.activity;

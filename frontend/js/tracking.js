@@ -48,6 +48,7 @@ const ASTRA_TRACKING = (() => {
           t.activity = cand.activity;
           t.confidence = cand.confidence;
           t.pose = cand.pose;
+          t.worldPose = cand.worldPose;
           t.misses = 0;
           unmatched.delete(bestIdx);
           results.push(t);
@@ -60,6 +61,7 @@ const ASTRA_TRACKING = (() => {
             activity: cand.activity,
             confidence: cand.confidence,
             pose: cand.pose,
+            worldPose: cand.worldPose,
             misses: 0,
           };
           tracks.push(t);

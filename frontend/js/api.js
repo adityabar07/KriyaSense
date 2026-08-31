@@ -56,9 +56,49 @@ const ASTRA_API = (() => {
   function onModeChange(fn) { modeSubscribers.push(fn); }
   function notifyModeChange() { modeSubscribers.forEach(fn => fn(detectionMode)); }
 
+  /** Object labels (from frame.objects) within proximity of either of a person's wrists — used by
+      har.js to boost READING/WRITING/USING_LAPTOP/USING_PHONE/OPENING/CLOSING confidence. 2D/image-space
+      on purpose: object boxes only exist in 2D, unlike the 3D world pose used for body geometry. */
+  function nearbyObjectLabels(person, objects) {
+    if (!person.pose) return [];
+    const wrists = [person.pose.lWrist, person.pose.rWrist].filter(Boolean);
+    if (!wrists.length || !objects.length) return [];
+    const found = new Set();
+    objects.forEach(o => {
+      const cx = o.bbox.x + o.bbox.width / 2, cy = o.bbox.y + o.bbox.height / 2;
+      wrists.forEach(w => {
+        if (Math.hypot(w.x - cx, w.y - cy) < 0.18) found.add(o.label);
+      });
+    });
+    return Array.from(found);
+  }
+
+  // The object detector can find a person the pose landmarker couldn't fit a
+  // skeleton to (small, occluded, or partially out of frame). That person is
+  // genuinely detected but has no body geometry to reason about — report it
+  // as UNCERTAIN with a reason rather than guessing or showing a bare label.
+  const NO_POSE_RESULT = { activity: 'UNCERTAIN', harReason: 'No pose landmarks for this person' };
+
+  function applyHarVideo(persons, objects) {
+    return persons.map(p => {
+      if (!p.worldPose) return { ...p, ...NO_POSE_RESULT };
+      const result = ASTRA_HAR.classifyVideoFrame(p.id, p.worldPose, nearbyObjectLabels(p, objects));
+      return { ...p, activity: result.activity, confidence: result.confidence, harReason: result.reason, harPrevious: result.previous };
+    });
+  }
+
+  function applyHarImage(persons, objects) {
+    return persons.map(p => {
+      if (!p.worldPose) return { ...p, ...NO_POSE_RESULT };
+      const result = ASTRA_HAR.classifyStaticImage(p.worldPose, nearbyObjectLabels(p, objects));
+      return { ...p, activity: result.activity, confidence: result.confidence, harReason: result.reason };
+    });
+  }
+
   async function refreshForCurrentMedia() {
     ensureTracker();
     tracker.reset();
+    ASTRA_HAR.resetAll();
     const type = ASTRA_MEDIA.getType();
     cachedMockImageFrame = null;
     cachedRealImageFrame = null;
@@ -66,7 +106,12 @@ const ASTRA_API = (() => {
     if (type === 'image') {
       cachedMockImageFrame = ASTRA_DETECTION.generateImageDetections();
       if (detectionMode === 'REAL' && ASTRA_REAL_DETECTION.isReady() && realEls.img) {
-        cachedRealImageFrame = await ASTRA_REAL_DETECTION.detectImageAsync(realEls.img);
+        const frame = await ASTRA_REAL_DETECTION.detectImageAsync(realEls.img);
+        // One-shot classification — a static image has no motion history, so
+        // this runs once here rather than every poll tick (the result can't
+        // change without new pixels).
+        frame.persons = applyHarImage(frame.persons, frame.objects);
+        cachedRealImageFrame = frame;
       }
       return;
     }
@@ -115,11 +160,9 @@ const ASTRA_API = (() => {
       if (useReal && realEls.video) {
         const raw = ASTRA_REAL_DETECTION.detectVideoFrameSync(realEls.video, Math.round(performance.now()));
         const tracked = tracker.update([...raw.persons, ...raw.objects]);
-        return {
-          timestamp: new Date().toISOString(),
-          persons: tracked.filter(x => x.kind === 'person'),
-          objects: tracked.filter(x => x.kind === 'object'),
-        };
+        const objects = tracked.filter(x => x.kind === 'object');
+        const persons = applyHarVideo(tracked.filter(x => x.kind === 'person'), objects);
+        return { timestamp: new Date().toISOString(), persons, objects };
       }
       const t = performance.now() / 1000;
       const { persons, objects } = ASTRA_DETECTION.generateLiveCandidates(t);

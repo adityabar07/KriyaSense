@@ -11,29 +11,24 @@
 const ASTRA_EXPERIMENT = (() => {
 
   const ACTIVITY_MASTER_LIST = [
-    // BAS chemical-handling experiment actions (primary scenario)
-    { code: 'PICK_UP', label: 'Pick Up' },
-    { code: 'OPEN_CAP', label: 'Open Cap' },
-    { code: 'DRAW_LIQUID', label: 'Draw Liquid' },
-    { code: 'POUR_LIQUID', label: 'Pour Liquid' },
-    { code: 'MIX', label: 'Mix' },
-    { code: 'PLACE_BACK', label: 'Place Back' },
-    // General activities (still available for custom builder sequences)
-    { code: 'STAND', label: 'Stand' },
-    { code: 'WALK', label: 'Walk' },
-    { code: 'SIT', label: 'Sit' },
-    { code: 'RUN', label: 'Run' },
-    { code: 'PICK_OBJECT', label: 'Pick Object' },
-    { code: 'PUT_OBJECT_DOWN', label: 'Put Object Down' },
-    { code: 'READ', label: 'Read' },
-    { code: 'WRITE', label: 'Write' },
-    { code: 'USE_LAPTOP', label: 'Use Laptop' },
-    { code: 'USE_PHONE', label: 'Use Phone' },
-    { code: 'OPEN', label: 'Open' },
-    { code: 'CLOSE', label: 'Close' },
-    { code: 'REACH', label: 'Reach' },
-    { code: 'CARRY', label: 'Carry' },
-    { code: 'LIE_DOWN', label: 'Lie Down' },
+    // The Experiment Builder's step picker — kept to exactly the same 10
+    // codes the real Human Activity Recognition system (har.js) can
+    // classify, so a custom experiment's expected steps line up with what
+    // General Activity Mode can actually detect. The BAS chemical-handling
+    // codes (PICK_UP/OPEN_CAP/DRAW_LIQUID/POUR_LIQUID/MIX/PLACE_BACK) are
+    // intentionally not offered here — those are experiment/object-
+    // interaction actions, not general human activity recognition; the
+    // default BAS demo sequence below still uses them directly.
+    { code: 'STANDING', label: 'Standing' },
+    { code: 'WALKING', label: 'Walking' },
+    { code: 'SITTING', label: 'Sitting' },
+    { code: 'RUNNING', label: 'Running' },
+    { code: 'READING', label: 'Reading' },
+    { code: 'WRITING', label: 'Writing' },
+    { code: 'USING_LAPTOP', label: 'Use Laptop' },
+    { code: 'USING_PHONE', label: 'Use Phone' },
+    { code: 'OPENING', label: 'Open' },
+    { code: 'CLOSING', label: 'Close' },
   ];
 
   const GUIDANCE_TEXT = {
@@ -43,18 +38,18 @@ const ASTRA_EXPERIMENT = (() => {
     POUR_LIQUID: 'Transfer the liquid drop-by-drop into the test tube.',
     MIX: 'Gently mix or stir the test tube contents.',
     PLACE_BACK: 'Place the equipment back in its original position on the rack.',
-    STAND: 'Stand upright and remain stationary until posture is confirmed.',
-    WALK: 'Walk steadily across the experiment area toward the workstation.',
-    SIT: 'Lower yourself into the seated position at the workstation.',
-    RUN: 'Move at a brisk, controlled pace across the module.',
+    STANDING: 'Stand upright and remain stationary until posture is confirmed.',
+    WALKING: 'Walk steadily across the experiment area toward the workstation.',
+    SITTING: 'Lower yourself into the seated position at the workstation.',
+    RUNNING: 'Move at a brisk, controlled pace across the module.',
     PICK_OBJECT: 'Reach toward the target object and pick it up.',
     PUT_OBJECT_DOWN: 'Place the object back down carefully on the surface.',
-    READ: 'Pick up the reference material and read the procedure.',
-    WRITE: 'Use the writing surface to record observations.',
-    USE_LAPTOP: 'Open the laptop and interact with the onboard console.',
-    USE_PHONE: 'Pick up the communication device and hold it to operate.',
-    OPEN: 'Open the designated payload compartment.',
-    CLOSE: 'Close the designated payload compartment securely.',
+    READING: 'Pick up the reference material and read the procedure.',
+    WRITING: 'Use the writing surface to record observations.',
+    USING_LAPTOP: 'Open the laptop and interact with the onboard console.',
+    USING_PHONE: 'Pick up the communication device and hold it to operate.',
+    OPENING: 'Open the designated payload compartment.',
+    CLOSING: 'Close the designated payload compartment securely.',
     REACH: 'Extend your arm toward the target object.',
     CARRY: 'Carry the object to the designated location.',
     LIE_DOWN: 'Move into the horizontal restrained position.',

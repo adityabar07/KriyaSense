@@ -100,19 +100,12 @@ const ASTRA_REAL_DETECTION = (() => {
   function isReady() { return ready; }
   function getUnsupportedReason() { return unsupportedReason; }
 
-  /** hip/knee/ankle geometry -> STANDING/SITTING, or null if legs aren't reliably visible. */
-  function estimateActivity(lm) {
-    const vis = (i) => (lm[i] && typeof lm[i].visibility === 'number') ? lm[i].visibility : 0;
-    const minVis = Math.min(vis(IDX.lHip), vis(IDX.rHip), vis(IDX.lKnee), vis(IDX.rKnee));
-    if (minVis < 0.3) return null;
-    const hipY = (lm[IDX.lHip].y + lm[IDX.rHip].y) / 2;
-    const kneeY = (lm[IDX.lKnee].y + lm[IDX.rKnee].y) / 2;
-    const ankleY = (lm[IDX.lAnkle].y + lm[IDX.rAnkle].y) / 2;
-    const thigh = kneeY - hipY;
-    const shin = ankleY - kneeY;
-    if (thigh <= 0.01 || shin <= 0.01) return null;
-    return (thigh / shin) < 0.55 ? 'SITTING' : 'STANDING';
-  }
+  // Activity classification itself lives in har.js, not here — this module's
+  // job stops at producing clean 2D (for drawing) and 3D (for geometry)
+  // named-joint poses. har.js needs a stable track_id to keep a temporal
+  // history per person, which doesn't exist yet at this point in the
+  // pipeline (tracking.js assigns it afterwards, in api.js) — so buildFrame()
+  // below leaves `activity`/`confidence` as placeholders for the caller.
 
   function poseFromLandmarks(lm) {
     const mid = (a, b) => ({ x: (lm[a].x + lm[b].x) / 2, y: (lm[a].y + lm[b].y) / 2 });
@@ -126,6 +119,24 @@ const ASTRA_REAL_DETECTION = (() => {
       lWrist: pt(IDX.lWrist), rWrist: pt(IDX.rWrist),
       spine: { x: (neck.x + hip.x) / 2, y: (neck.y + hip.y) / 2 },
       hip, lHip: pt(IDX.lHip), rHip: pt(IDX.rHip),
+      lKnee: pt(IDX.lKnee), rKnee: pt(IDX.rKnee),
+      lAnkle: pt(IDX.lAnkle), rAnkle: pt(IDX.rAnkle),
+    };
+  }
+
+  /** Same named-joint shape as poseFromLandmarks(), but from MediaPipe's
+      WORLD landmarks (real metric 3D, roughly hip-centered) — this is what
+      har.js does its angle/geometry math on, since it isn't tied to image
+      pixels or camera framing. */
+  function worldPoseFromLandmarks(wlm) {
+    const mid = (a, b) => ({ x: (wlm[a].x + wlm[b].x) / 2, y: (wlm[a].y + wlm[b].y) / 2, z: (wlm[a].z + wlm[b].z) / 2 });
+    const pt = (i) => ({ x: wlm[i].x, y: wlm[i].y, z: wlm[i].z, visibility: wlm[i].visibility });
+    return {
+      nose: pt(IDX.nose),
+      lShoulder: pt(IDX.lShoulder), rShoulder: pt(IDX.rShoulder),
+      lElbow: pt(IDX.lElbow), rElbow: pt(IDX.rElbow),
+      lWrist: pt(IDX.lWrist), rWrist: pt(IDX.rWrist),
+      lHip: pt(IDX.lHip), rHip: pt(IDX.rHip),
       lKnee: pt(IDX.lKnee), rKnee: pt(IDX.rKnee),
       lAnkle: pt(IDX.lAnkle), rAnkle: pt(IDX.rAnkle),
     };
@@ -151,8 +162,15 @@ const ASTRA_REAL_DETECTION = (() => {
 
   function buildFrame(objResult, poseResult, frameW, frameH) {
     const personBoxes = (objResult.detections || []).filter(d => d.categories[0] && d.categories[0].categoryName === 'person');
-    const otherObjects = (objResult.detections || []).filter(d => !d.categories[0] || d.categories[0].categoryName !== 'person');
+    // A detection can come back with categories[0] present but categoryName
+    // null/empty (MediaPipe does this for low-confidence/ambiguous labels) —
+    // exclude those rather than crash on categoryName.toUpperCase() below.
+    const otherObjects = (objResult.detections || []).filter(d => {
+      const name = d.categories[0] && d.categories[0].categoryName;
+      return !!name && name !== 'person';
+    });
     const poses = poseResult.landmarks || [];
+    const worldPoses = poseResult.worldLandmarks || [];
     const usedPoseIdx = new Set();
 
     function poseCenterPx(lm) {
@@ -184,14 +202,17 @@ const ASTRA_REAL_DETECTION = (() => {
         if (dist < bestDist && dist <= maxMatchDist) { bestDist = dist; bestIdx = i; }
       });
 
-      let pose = null, activity = null;
+      let pose = null, worldPose = null;
       if (bestIdx >= 0) {
         usedPoseIdx.add(bestIdx);
         pose = poseFromLandmarks(poses[bestIdx]);
-        activity = estimateActivity(poses[bestIdx]);
+        if (worldPoses[bestIdx]) worldPose = worldPoseFromLandmarks(worldPoses[bestIdx]);
       }
 
-      return { kind: 'person', label: 'person', bbox, pose, activity, confidence: cat.score * 100 };
+      // activity/confidence are filled in by the caller (api.js), which is
+      // where a stable track_id exists to key har.js's per-person temporal
+      // history — see the note above poseFromLandmarks().
+      return { kind: 'person', label: 'person', bbox, pose, worldPose, activity: null, confidence: cat.score * 100 };
     });
 
     // A pose the object detector's NMS happened to miss still counts as a
@@ -202,7 +223,8 @@ const ASTRA_REAL_DETECTION = (() => {
       persons.push({
         kind: 'person', label: 'person',
         bbox: landmarksBBox(lm), pose: poseFromLandmarks(lm),
-        activity: estimateActivity(lm), confidence: poseVisibilityConfidence(lm),
+        worldPose: worldPoses[i] ? worldPoseFromLandmarks(worldPoses[i]) : null,
+        activity: null, confidence: poseVisibilityConfidence(lm),
       });
     });
 
@@ -211,7 +233,7 @@ const ASTRA_REAL_DETECTION = (() => {
       const bb = d.boundingBox;
       return {
         kind: 'object',
-        label: cat.categoryName.toUpperCase().replace(/ /g, '_'),
+        label: (cat.categoryName || 'OBJECT').toUpperCase().replace(/ /g, '_'),
         confidence: cat.score * 100,
         bbox: {
           x: clamp01(bb.originX / frameW), y: clamp01(bb.originY / frameH),

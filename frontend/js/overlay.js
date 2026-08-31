@@ -128,8 +128,13 @@ const ASTRA_OVERLAY = (() => {
 
     (frame.persons || []).forEach(p => {
       const x = p.bbox.x * width, y = p.bbox.y * height, w = p.bbox.width * width, h = p.bbox.height * height;
-      const label = window.ASTRA_ACTIVITY ? ASTRA_ACTIVITY.labelFor(p.activity) : p.activity;
-      const idLabel = window.ASTRA_ACTIVITY ? ASTRA_ACTIVITY.formatPersonId(p.id) : `PERSON ${p.id}`;
+      // ASTRA_ACTIVITY is a top-level `const` in activity.js (loaded before
+      // this file) — it's a real lexical binding, not a window.* property,
+      // so `window.ASTRA_ACTIVITY` is always undefined and must not be used
+      // as the guard here. Bare reference is safe: activity.js is an
+      // unconditional dependency, always loaded by the time render() runs.
+      const label = ASTRA_ACTIVITY.labelFor(p.activity);
+      const idLabel = ASTRA_ACTIVITY.formatPersonId(p.id);
       drawBox(ctx, x, y, w, h, '#3ee6ff', [idLabel, label.toUpperCase(), `CONF ${p.confidence.toFixed(1)}%`]);
       if (p.pose) {
         const pixelPose = {};

@@ -108,6 +108,7 @@
         </div>
         <div class="person-card-activity">${record.label.toUpperCase()}</div>
         <div class="meter"><div class="meter-fill" style="width:${record.confidence}%"></div></div>
+        ${record.reason ? `<div class="person-card-reason">${record.reason}</div>` : ''}
       </div>`;
   }
 
@@ -228,11 +229,13 @@
     const el = $('#poseInfoList');
     if (!el) return;
     const conf = primary ? primary.confidence : null;
+    const har = ASTRA_API.getDetectionMode() === 'REAL' && ASTRA_API.isRealDetectionReady();
     el.innerHTML = kvHtml([
-      { k: 'Model', v: 'MediaPipe / YOLO Pose' },
-      { k: 'Keypoints', v: '14 (mock) · 33 (target)' },
+      { k: 'Model', v: har ? 'MediaPipe Pose Landmarker' : 'Simulated' },
+      { k: 'Keypoints', v: har ? '33 (2D + 3D world)' : '—' },
       { k: 'Confidence', v: conf != null ? `${conf.toFixed(1)}%` : '—', cls: 'green' },
       { k: 'Tracking', v: primary ? 'ACTIVE' : 'IDLE', cls: primary ? 'cyan' : '' },
+      { k: 'HAR', v: har ? 'Geometry + temporal' : 'Scripted', cls: har ? 'green' : 'orange' },
       { k: 'Orientation', v: 'ARBITRARY', cls: 'orange' },
     ]);
   }
@@ -291,9 +294,19 @@
     CANVAS_IDS.forEach(id => {
       const canvas = document.getElementById(id);
       if (!canvas) return;
-      if (idle) ASTRA_OVERLAY.drawPlaceholder(canvas, 'NO ACTIVE FEED — Upload an image/video or start Live Camera');
-      else if (loadingReal) ASTRA_OVERLAY.drawPlaceholder(canvas, 'LOADING REAL AI MODEL — one-time, then fully offline');
-      else ASTRA_OVERLAY.render(canvas, state.latestFrame);
+      try {
+        if (idle) ASTRA_OVERLAY.drawPlaceholder(canvas, 'NO ACTIVE FEED — Upload an image/video or start Live Camera');
+        else if (loadingReal) ASTRA_OVERLAY.drawPlaceholder(canvas, 'LOADING REAL AI MODEL — one-time, then fully offline');
+        else ASTRA_OVERLAY.render(canvas, state.latestFrame);
+      } catch (err) {
+        // A single bad frame must never permanently freeze the overlay —
+        // without this, an uncaught error here stops requestAnimationFrame
+        // from ever being rescheduled below, silently killing every canvas
+        // for the rest of the session while the (separately-driven)
+        // Detected Persons panel keeps updating, producing exactly the
+        // "overlay stuck showing an old/wrong count" symptom this guards.
+        console.error('visionLoop render failed for', id, err);
+      }
     });
     requestAnimationFrame(visionLoop);
   }
