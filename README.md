@@ -1,144 +1,301 @@
-# KRIYA-SENSE
+<div align="center">
+<img width="102" height="89" alt="logo" src="https://github.com/user-attachments/assets/1d209507-8e60-45c6-a651-4b2d301301ce" />
 
-**AI Human Activity Recognition & Experiment Validation System**
-SIH 2026 · Problem Statement 26174 · ISRO — *AI Human Activity Recognition for On-board BAS Experiments*
+# KriyaSense
 
----
+### AI Human Activity Recognition for On-board BAS Experiments
 
-## 1. Project Structure
+**Observe → Understand → Validate → Warn → Record**
 
-```
-KRIYA-SENSE/
-├── frontend/                  Static web dashboard (HTML/CSS/vanilla JS)
-│   ├── index.html
-│   ├── css/style.css
-│   ├── js/
-│   │   ├── app.js             navigation, state, wiring, clock, polling
-│   │   ├── camera.js          webcam + video-upload handling only
-│   │   ├── experiment.js      FSM simulation, event log, TTS, builder logic
-│   │   ├── visualization.js   canvas overlay, charts, pipeline/arch diagrams
-│   │   └── api.js             mock backend abstraction (REST/WS surface)
-│   └── assets/
-│
-├── backend/                   Future Python service (placeholder today)
-│   ├── main.py                minimal FastAPI app, mock endpoints, WS stub
-│   ├── requirements.txt
-│   ├── api/                   (empty — future route modules)
-│   ├── ai/
-│   │   ├── yolo/               person/object detection
-│   │   ├── pose/                MediaPipe / YOLO-Pose estimation
-│   │   ├── tracking/            multi-object tracking
-│   │   ├── hand_interaction/    hand-object interaction classification
-│   │   ├── har/                 activity recognition model
-│   │   └── temporal_model/      LSTM / GRU / Transformer
-│   ├── experiment/             fsm.py, validator.py (empty — to be built)
-│   ├── video/                  camera.py, recorder.py, streamer.py
-│   ├── audio/                  tts.py
-│   ├── logging/                experiment_logger.py
-│   ├── models/                 trained weights
-│   ├── datasets/
-│   └── config/
-│
-├── data/
-├── models/
-├── experiments/
-├── recordings/
-├── logs/
-└── README.md
-```
+An offline-first, real-time AI assistant that watches a Bharatiya Antariksh Station (BAS)-type on-board experiment, understands what the operator is doing, validates it against the official protocol, and guides the operator back on track the instant something goes wrong.
 
-**Run the frontend today:** open `frontend/index.html` directly in a browser, or serve it with any static file server. It requires no backend, no build step, and no npm install.
+[![SIH 2026](https://img.shields.io/badge/SIH%202026-PS%20174%20%7C%20SIH26174-0070C0?style=flat-square)](https://sih.gov.in)
+[![Theme](https://img.shields.io/badge/Theme-Space%20Technology-1F6FB2?style=flat-square)]()
+[![Category](https://img.shields.io/badge/Category-Software-0B5AA0?style=flat-square)]()
+[![Status](https://img.shields.io/badge/Status-Phase%200%20%7C%20Protocol%20Freeze-F5A623?style=flat-square)]()
+[![Offline First](https://img.shields.io/badge/Offline-First-003D73?style=flat-square)]()
+[![License](https://img.shields.io/badge/License-TBD-lightgrey?style=flat-square)]()
 
-**Run the backend (serves the API *and* the dashboard together):**
-```
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload   # host/port/reload come from backend/.env
-```
-Open **http://localhost:8000** — the dashboard and the mock API share one origin, so there's no CORS friction during the demo.
+**Team Astrocrew** — Arup · Aditya · Rajarshi · Tamasi · Sangsaptak · Suman
 
-Configuration lives in `backend/.env` (git-ignored; `backend/.env.example` documents the same keys for anyone cloning fresh — copy it with `cp .env.example .env` if `.env` is missing):
-
-| Key | Default | Meaning |
-|---|---|---|
-| `API_TITLE`, `API_VERSION` | `KRIYA-SENSE Backend`, `0.1.0-placeholder` | Shown in `/docs` (OpenAPI) |
-| `HOST`, `PORT` | `0.0.0.0`, `8000` | Used when running `python main.py` directly; the `uvicorn` CLI's own `--host`/`--port` flags take precedence over these if passed |
-| `RELOAD` | `true` | Auto-reload on file changes (only applies to `python main.py`) |
-| `CORS_ORIGINS` | `*` | Comma-separated allowed origins — tighten once the frontend has a fixed deployed origin |
-| `SERVE_FRONTEND` | `true` | Set to `false` to run the API only, e.g. if the frontend is hosted elsewhere |
+</div>
 
 ---
 
-## 2. How the Frontend Works
+## Table of Contents
 
-The frontend is a single-page app with ten sections toggled by `app.js` (Dashboard, Live Analysis, General Activity, Experiment Mode, Experiment Builder, Activity History, AI Pipeline, System Monitor, Video Streaming, Settings). Each JS module owns one concern only:
+- [About](#about)
+- [Why KriyaSense Is Different](#why-kriyasense-is-different)
+- [How It Works](#how-it-works)
+- [Tech Stack](#tech-stack)
+- [Repository Structure](#repository-structure)
+- [Project Status](#project-status)
+- [Documentation](#documentation)
+- [Getting Started](#getting-started)
+- [Development Roadmap](#development-roadmap)
+- [Evaluation Metrics](#evaluation-metrics)
+- [Team](#team)
+- [Contributing](#contributing)
+- [Security & Data](#security--data)
+- [References](#references)
+- [License](#license)
 
-- **`api.js`** — the only file that knows about HTTP/WebSocket. Every other module calls functions like `getCurrentActivity()` or `connectWebSocket()` and receives a Promise/callback with JSON, never caring whether the data came from a mock generator or a real server.
-- **`camera.js`** — raw video I/O: `getUserMedia()` for the live camera, `URL.createObjectURL()` for uploaded files. No AI, no canvas drawing.
-- **`experiment.js`** — the client-side FSM simulation: sequence state, step validation, violation detection, event log, `speechSynthesis` voice alerts, TXT export, and the experiment builder's save logic.
-- **`visualization.js`** — everything visual: the canvas overlay (bounding boxes, pose skeleton, hand keypoints), the AI pipeline diagram, the frontend↔backend architecture diagram, and the Chart.js instances.
-- **`app.js`** — the only file that touches the DOM structure directly. It wires the above modules to the page and runs the polling/animation loops (clock, system metrics, `requestAnimationFrame` vision loop).
+---
 
-## 3. How the Backend Will Work
+## About
 
-`backend/main.py` is a minimal FastAPI app exposing the exact REST/WebSocket contract the frontend already expects, returning mock JSON. As each AI stage is implemented under `backend/ai/`, `backend/experiment/`, `backend/video/`, and `backend/audio/`, the corresponding endpoint body is swapped from "return mock data" to "call the real pipeline stage" — no frontend changes required, because the JSON shape stays identical.
+**Problem Statement:** PS 174 / SIH26174 — *AI Human Activity Recognition for On-board BAS Experiments*
+**Theme:** Space Technology · **Category:** Software · **Event:** Smart India Hackathon 2026
 
-The intended real-time flow inside the backend:
+On-board experiments in constrained environments (spacecraft cabins, analog space habitats, remote labs) are usually run by a single operator with no second pair of expert eyes. A skipped step, an out-of-order action, or the wrong object handled at the wrong time can silently invalidate results — and is often only caught during post-mission review, when it's too late to fix.
 
+**KriyaSense** is a task-specific, offline, real-time on-board experiment assistant built to solve exactly this problem. It is **not** a generic Human Activity Recognition (HAR) demo — it is protocol intelligence for one certified experiment, engineered for explainability and operational reliability first.
+
+> *KriyaSense doesn't just recognize activity — it understands protocol, and protects it.*
+
+## Why KriyaSense Is Different
+
+- **Protocol-specific, not generic HAR** — trained and validated against one official, certified experiment sequence, not an arbitrary activity vocabulary.
+- **Explainable by design** — a neural model answers *"what is happening?"*; a separate, deterministic state machine answers *"is it valid right now?"*. Every alert traces back to a rule, never a black-box score.
+- **Fully offline** — models, inference, voice, GUI, logging, and recording all run locally. No cloud dependency for the core loop, built for real connectivity-constrained environments.
+- **Lightweight operational record** — compact timestamped TXT/CSV/JSON logs replace costly continuous video downlink.
+- **False-alert-aware** — multi-signal evidence fusion and temporal smoothing mean the system says *"action uncertain — observing"* instead of guessing when confidence is low.
+
+## How It Works
+
+```text
+FIXED PAYLOAD CAMERA
+        │
+        ▼
+VIDEO CAPTURE  (OpenCV / GStreamer)
+        │
+        ▼
+PERCEPTION LAYER
+  ├── YOLO Object Detection
+  ├── Object Tracking (ByteTrack / BoT-SORT)
+  ├── Pose Estimation (MediaPipe Pose / YOLO Pose)
+  └── Hand/Object Interaction (geometric + temporal features)
+        │
+        ▼
+TEMPORAL ACTIVITY MODEL
+  Rule baseline → LSTM/GRU → Transformer (only if justified)
+        │
+        ▼
+EXPERIMENT STATE MACHINE
+  Expected Step ↔ Observed Step → Validate
+        │
+        ├──────────────┬──────────────┐
+        ▼              ▼              ▼
+   VOICE ALERT     EVENT LOG         GUI
+        └──────────────┬──────────────┘
+                        ▼
+                LOCAL RECORDING + IP STREAMING
 ```
-Camera → OpenCV → YOLO → Tracking → Pose Estimation → Hand Detection
-  → Hand-Object Interaction → Feature Extraction → HAR Model
-  → LSTM/GRU/Transformer → Activity Prediction → Finite State Machine
-  → Sequence Validation → Guidance/TTS/Logging → API/WebSocket → Frontend
-```
 
-## 4. How Frontend ↔ Backend Communication Works
+Full architectural rationale, data contracts, and deployment topology are documented in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
-`api.js` defines the full client surface the backend must satisfy:
+## Tech Stack
 
-| Function | REST equivalent |
+| Layer | Technology |
 |---|---|
-| `getCurrentActivity()` | `GET /api/activity` |
-| `getDetections()` | `GET /api/detections` |
-| `getPose()` | `GET /api/pose` |
-| `getTracking()` | `GET /api/tracking` |
-| `getExperimentStatus()` | `GET /api/experiment` |
-| `getSystemMetrics()` | `GET /api/system` |
-| `getEventLog()` | `GET /api/events` |
-| `startAnalysis()` / `stopAnalysis()` | `POST /api/analysis/start` / `/stop` |
-| `createExperiment()` | `POST /api/experiment/create` |
-| `resetExperiment()` | `POST /api/experiment/reset` |
-| `connectWebSocket()` | `WS /ws/ai-stream` |
+| **AI / Computer Vision** | Python, PyTorch, OpenCV, Ultralytics YOLO, MediaPipe Pose / YOLO Pose, NumPy, Pandas, scikit-learn |
+| **Tracking** | ByteTrack / BoT-SORT |
+| **Temporal Modeling** | Rule-based baseline → LSTM/GRU → Transformer (only if data/performance justify it) |
+| **Backend** | FastAPI, Uvicorn, WebSocket |
+| **Frontend** | React, Vite, Tailwind CSS |
+| **Video** | OpenCV, FFmpeg / GStreamer |
+| **Voice** | Offline TTS engine (no cloud dependency) |
+| **Annotation** | CVAT / Roboflow / Label Studio |
+| **Packaging** | Docker (optional), PyInstaller or a reproducible packaged Python environment |
 
-The **Settings** page lets you point the frontend at a real backend URL and click "Attempt Backend Connection." If the backend responds, the status pill switches from `BACKEND: MOCK MODE` to `BACKEND: LIVE`. If it's unreachable (or simply off), the UI silently continues on local mock data — nothing in the interface ever blocks or errors out waiting for a server.
+No microservice sprawl and no technology adopted purely for buzzwords — every addition must have a measurable, stated benefit (see [`RULES.md`](./RULES.md)).
 
-## 5. What Is Currently Simulated
+## Repository Structure
 
-Everything AI-related. `api.js` generates randomized-but-plausible JSON matching the target contract (`person_count`, `activity`, `confidence`, `objects[]`, `pose`, `hands`); `experiment.js` runs the FSM logic that will eventually live in `backend/experiment/fsm.py`; `visualization.js` draws bounding boxes/skeletons procedurally rather than from real model output. Camera capture and video upload/playback are the only genuinely real (non-simulated) pieces — they use real browser APIs, but no video frame ever leaves the device.
+```text
+astra-h/
+├── README.md
+├── SIH_CONTEXT_KriyaSense.md   # Ground-truth project brief
+├── PRD.md                      # Product requirements
+├── ARCHITECTURE.md             # System architecture & data contracts
+├── PHASES.md                   # Phase-gated development roadmap
+├── DESIGN.md                   # UI/UX design system
+├── MEMORY.md                   # Living project memory / decision log
+├── RULES.md                    # Team & AI-agent operating rules
+├── LICENSE
+├── .gitignore
+├── .env.example
+├── docs/
+│   ├── EXPERIMENT_PROTOCOL.md  # Official step-by-step protocol (Phase 0 deliverable)
+│   ├── DATASET.md
+│   ├── MODEL_CARD.md
+│   ├── API.md
+│   └── DEMO_SCRIPT.md
+├── frontend/                   # React + Vite + Tailwind dashboard
+├── backend/
+│   ├── app/                    # FastAPI + WebSocket service
+│   └── requirements.txt
+├── ai/
+│   ├── detection/
+│   ├── tracking/
+│   ├── pose/
+│   ├── interaction/
+│   ├── activity/
+│   ├── inference/
+│   └── evaluation/
+├── state_machine/               # Deterministic sequence validation
+├── alerts/                      # Voice + confidence fusion
+├── video/                       # Recording & IP streaming
+├── logging/                     # TXT / CSV / JSON event logs
+├── configs/
+│   └── experiment.yaml          # Config-driven protocol definition
+├── models/
+├── evaluation/
+├── scripts/
+└── tests/
+```
 
-## 6–13. Where Each Real AI Component Will Be Integrated
+> Some directories above are scaffolding for the planned structure and may not exist yet in a fresh clone — check [`MEMORY.md`](./MEMORY.md) for the current, honest build status before assuming a module is implemented.
 
-| Component | Backend location | Wired to frontend via |
-|---|---|---|
-| **YOLO** (detection) | `backend/ai/yolo/` | `GET /api/detections`, streamed over `/ws/ai-stream` |
-| **Pose estimation** (MediaPipe/YOLO-Pose) | `backend/ai/pose/` | `GET /api/pose` |
-| **Tracking** | `backend/ai/tracking/` | `GET /api/tracking` |
-| **HAR model** | `backend/ai/har/` | `GET /api/activity` (`activity`, `confidence`) |
-| **LSTM/GRU/Transformer** (temporal) | `backend/ai/temporal_model/` | feeds HAR output before `/api/activity` responds |
-| **Finite State Machine** | `backend/experiment/fsm.py` + `validator.py` | `GET /api/experiment`, `POST /api/experiment/*` |
-| **TTS** | `backend/audio/tts.py` | triggered server-side on violation/guidance events; frontend's `speechSynthesis` calls in `experiment.js` are today's stand-in and can stay as a fallback even after the backend gets real TTS |
-| **OpenCV** | used throughout `backend/video/camera.py` and every `ai/*` stage for frame pre/post-processing | reflected in the System Monitor's OpenCV panel (`GET /api/system`) |
-| **FFmpeg/GStreamer** | `backend/video/recorder.py`, `backend/video/streamer.py` | reflected in the Video Streaming page (`GET /api/system`, future `/api/stream/status`) |
+## Project Status
 
-## 14. Where FFmpeg/GStreamer Fit
+🚧 **Current phase: Phase 0 — Understand & Freeze.** No dataset collection, training, or protocol-dependent code has started yet. This is intentional: the official PS 174 experiment sequence must be confirmed and frozen into `docs/EXPERIMENT_PROTOCOL.md` before any downstream work begins — see [`RULES.md`](./RULES.md) §2 for why we treat this as a hard gate.
 
-`backend/video/recorder.py` will pipe processed frames to FFmpeg for local `.mp4` recording into `recordings/`; `backend/video/streamer.py` will use FFmpeg/GStreamer to publish an RTSP/IP stream for ground monitoring. Both are currently represented in the frontend's Video Streaming page as read-only telemetry (recording status, encoding, destination, protocol) sourced from mock data.
+| Item | Status |
+|---|---|
+| Official PS 174 protocol confirmed | ❌ Not yet confirmed |
+| `docs/EXPERIMENT_PROTOCOL.md` | ❌ Not yet created |
+| `configs/experiment.yaml` | ❌ Placeholder only |
+| Physical experiment replica | ❌ Not started |
+| Pilot dataset | ❌ Not started |
+| Object detector | ❌ Not started |
+| Planning documentation (PRD/Architecture/Phases/Design/Rules/Memory) | ✅ Complete |
 
-## 15. How to Eventually Connect Everything
+For the live, continuously-updated status, decision log, and open questions, see [`MEMORY.md`](./MEMORY.md) — read it before starting any new work on this repo.
 
-1. Implement each `backend/ai/*` module independently against recorded sample video, validating output shape against the JSON contract already consumed by `api.js`.
-2. Wire them into `backend/main.py` in pipeline order (YOLO → Pose → Tracking → Hand Interaction → HAR → Temporal Model), replacing the mock frame generator.
-3. Implement `backend/experiment/fsm.py` and `validator.py` using the same state machine shape `experiment.js` already models client-side, so the Experiment Mode UI needs no changes.
-4. Replace the `setInterval` mock in `ASTRA_API.connectWebSocket()` (`frontend/js/api.js`) with a real `new WebSocket(CONFIG.wsUrl)` connection — this is the only edit required in the frontend to go fully live.
-5. Point the Settings page's API Base / WebSocket fields at the deployed backend and confirm `BACKEND: LIVE` status.
-6. Turn on `backend/video/recorder.py` and `streamer.py` for persistent recording and ground-station streaming once camera + inference are stable end to end.
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`SIH_CONTEXT_KriyaSense.md`](./SIH_CONTEXT_KriyaSense.md) | The single source of truth for the entire project |
+| [`PRD.md`](./PRD.md) | Problem statement, goals, requirements, MVP scope, success metrics |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | System design, component responsibilities, data contracts, deployment topology |
+| [`PHASES.md`](./PHASES.md) | Phase 0 → Phase 14 roadmap with owners and exit criteria |
+| [`DESIGN.md`](./DESIGN.md) | UI/UX design system for the mission-monitoring dashboard |
+| [`MEMORY.md`](./MEMORY.md) | Living project memory — current status, glossary, decision log, open questions |
+| [`RULES.md`](./RULES.md) | Operating rules for the team and for AI coding agents (Claude, Antigravity) |
+
+## Getting Started
+
+> The environment below reflects the **planned** stack. Until Phase 0 closes and initial modules land, treat this as a setup reference, not a guarantee that every module is runnable yet — check [`MEMORY.md`](./MEMORY.md) first.
+
+### Prerequisites
+
+- Python 3.10+ (version to be locked after the first verified dev environment)
+- Node.js LTS
+- Git
+- A CUDA-capable GPU is optional but recommended for training/inference speed
+- 1080p USB webcam + tripod mount (for data collection and live testing)
+
+### Clone
+
+```bash
+git clone https://github.com/<org>/astra-h.git
+cd astra-h
+```
+
+### Backend (AI + API)
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp ../.env.example ../.env     # fill in local config, never commit this file
+uvicorn app.main:app --reload
+```
+
+### Frontend (Dashboard)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### Configuration
+
+Experiment protocol, steps, and objects are defined in `configs/experiment.yaml` — **never hard-coded** into Python. Do not edit step definitions there until `docs/EXPERIMENT_PROTOCOL.md` has been finalized and human-approved.
+
+## Development Roadmap
+
+KriyaSense follows a strict phase-gated plan — see [`PHASES.md`](./PHASES.md) for full detail on owners and exit criteria per phase.
+
+`Phase 0` Understand & Freeze → `Phase 1` Physical Setup → `Phase 2` Dataset Pipeline → `Phase 3` Object Detection → `Phase 4` Tracking → `Phase 5` Pose & Interaction → `Phase 6` Activity Recognition → `Phase 7` State Machine → `Phase 8` Confidence & Uncertainty → `Phase 9` Voice & Logging → `Phase 10` GUI → `Phase 11` Recording & Streaming → `Phase 12` Offline Packaging → `Phase 13` Optimization → `Phase 14` Advanced Space Extension (optional)
+
+**Priority order when time is limited:** official PS understanding → exact protocol → dataset quality → reliable perception → activity recognition → sequence validation → false-alert reduction → offline inference → evaluation → demo reliability → GUI polish → advanced 3D features → animations. *A beautiful UI cannot compensate for unreliable AI.*
+
+## Evaluation Metrics
+
+KriyaSense is evaluated on more than raw accuracy — false-alert rate is a first-class metric throughout:
+
+- **Detection:** Precision, Recall, mAP
+- **Activity Recognition:** Accuracy, Precision, Recall, F1, confusion matrix
+- **Sequence Validation:** correct-sequence accuracy, skipped-step / out-of-order / wrong-object detection rate, **false-alert rate**
+- **System:** FPS, end-to-end latency, CPU/GPU/RAM usage
+- **Alerts:** alert latency, correct-alert rate
+
+No metric is reported in any document or demo unless it has actually been computed and is reproducible from a script in `evaluation/` — see [`RULES.md`](./RULES.md) §7.
+
+## Team
+
+| Member | Role |
+|---|---|
+| **Arup** (Co-Leader) | Project coordination, AI/ML architecture, integration, SIH strategy |
+| **Aditya** | Backend/API, inference integration, WebSocket, state-machine integration |
+| **Rajarshi** | Dataset collection, physical setup, annotation, data quality |
+| **Tamasi** | Model training, temporal activity recognition, evaluation |
+| **Sangsaptak** | Frontend, UI/UX, monitoring dashboard |
+| **Suman** | Testing, deployment, recording/streaming, documentation, demo support |
+
+Responsibilities overlap by design — every member is expected to understand the whole system well enough to review outside their primary area.
+
+## Contributing
+
+This is a closed team project for SIH 2026, but the workflow below applies to all contributors (human or AI agent):
+
+1. Read [`MEMORY.md`](./MEMORY.md) and [`SIH_CONTEXT_KriyaSense.md`](./SIH_CONTEXT_KriyaSense.md) before making changes.
+2. Branch from `main` — **never push directly to `main`.**
+3. Keep changes incremental and test after every meaningful change.
+4. Open a Pull Request; at least one review is required before merge.
+5. Write meaningful commit messages (what changed and why).
+6. Never commit `.env`, API keys, credentials, private datasets, or secrets.
+
+Full rules for both human contributors and AI coding agents (Claude, Google Antigravity) are in [`RULES.md`](./RULES.md), including the absolute prohibitions on fabricated data/metrics and inventing experiment protocol steps.
+
+## Security & Data
+
+- No secrets, keys, or credentials are ever committed — see `.gitignore` and `.env.example`.
+- The dataset is custom and experiment-specific; participant-separated train/val/test splits are mandatory (never split near-identical frames from the same video across sets).
+- Data/licensing decisions and consent are human-owned; AI agents assist with pipeline and tooling only.
+
+## References
+
+- Problem Statement 174, Smart India Hackathon 2026 portal — [sih.gov.in](https://sih.gov.in)
+- Ultralytics YOLO — [docs.ultralytics.com](https://docs.ultralytics.com)
+- Google MediaPipe Pose Landmarker — [developers.google.com/mediapipe](https://developers.google.com/mediapipe)
+- ByteTrack / BoT-SORT — open-source multi-object tracking research repositories
+- FastAPI, React, PyTorch, OpenCV — official project documentation
+- ISRO — Bharatiya Antariksh Station (BAS) programme overview — [isro.gov.in](https://isro.gov.in)
+
+## License
+
+License to be finalized by the team before public release. Until then, all rights reserved by Team Astrocrew.
+
+---
+
+<div align="center">
+
+**KriyaSense** — a practical onboard AI experiment assistant that understands what the operator is doing, knows what should happen next, detects protocol violations, assists the operator, and produces a lightweight operational record — locally and in real time.
+
+</div>
