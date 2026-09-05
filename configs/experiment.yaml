@@ -1,0 +1,46 @@
+# PLACEHOLDER SEQUENCE — NOT the official PS 174 protocol.
+# Mirrors backend/api/state.py's mock data for now. Replace only
+# after docs/EXPERIMENT_PROTOCOL.md is human-approved (see RULES.md §1).
+
+experiment_name: BAS_CHEMICAL_HANDLING_PLACEHOLDER
+version: "0.1.0-draft"
+protocol_doc: "docs/EXPERIMENT_PROTOCOL.md"
+status: "PLACEHOLDER_ONLY"
+
+steps:
+  - id: S1
+    name: PICK_UP
+    description: "Pick up the chemical container / sample tube"
+    required_object: "container"
+    expected_interaction: "PICK"
+    voice_message_on_complete: "Step 1 complete: container picked up. Proceed to step 2: open cap."
+  - id: S2
+    name: OPEN_CAP
+    description: "Open the container cap / lid"
+    required_object: "container_cap"
+    expected_interaction: "OPEN"
+    voice_message_on_complete: "Step 2 complete: cap opened. Proceed to step 3: draw liquid."
+  - id: S3
+    name: DRAW_LIQUID
+    description: "Draw liquid using pipette / syringe"
+    required_object: "pipette"
+    expected_interaction: "DRAW"
+    voice_message_on_complete: "Step 3 complete: liquid drawn. Proceed to step 4: pour liquid."
+  - id: S4
+    name: POUR_LIQUID
+    description: "Pour liquid into target vial / test tube"
+    required_object: "test_tube"
+    expected_interaction: "POUR"
+    voice_message_on_complete: "Step 4 complete: liquid poured. Proceed to step 5: mix."
+  - id: S5
+    name: MIX
+    description: "Mix or agitate solution"
+    required_object: "test_tube"
+    expected_interaction: "MIX"
+    voice_message_on_complete: "Step 5 complete: solution mixed. Proceed to step 6: place back."
+  - id: S6
+    name: PLACE_BACK
+    description: "Place container back in rack"
+    required_object: "rack"
+    expected_interaction: "PLACE"
+    voice_message_on_complete: "Step 6 complete: container placed back. Protocol run finished."

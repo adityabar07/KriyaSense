@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KRIYA-SENSE | AI Human Activity Recognition &amp; Experiment Validation</title>
+<title>KriyaSense AI | Human Activity Recognition &amp; Experiment Validation</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
@@ -17,9 +18,11 @@
   <!-- ===================== SIDEBAR ===================== -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="brand-mark"><i data-lucide="radar"></i></div>
+      <div class="brand-mark">
+        <img src="assets/logo.png" alt="KriyaSense AI Logo" class="brand-logo-img">
+      </div>
       <div class="brand-text">
-        <span class="brand-title">KRIYA-SENSE</span>
+        <span class="brand-title">KriyaSense <span class="brand-ai">AI</span></span>
         <span class="brand-sub">Mission Vision System</span>
       </div>
       <button class="sidebar-toggle" id="sidebarToggle" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
@@ -60,6 +63,10 @@
         <span class="page-crumb" id="pageCrumb">Mission Overview</span>
       </div>
       <div class="topbar-right">
+        <div class="status-pill status-pill-mode" id="topbarModeBadge">
+          <span class="dot dot-orange" id="topbarModeDot"></span>
+          <span id="topbarModeText">🔴 SIMULATED DATA</span>
+        </div>
         <div class="status-pill" id="connStatus">
           <span class="dot dot-orange"></span>
           <span>BACKEND: MOCK MODE</span>
@@ -246,6 +253,10 @@
 
       <!-- ================= EXPERIMENT MODE ================= -->
       <section class="page" id="page-experiment-mode">
+        <div class="demo-protocol-notice">
+          <i data-lucide="info"></i>
+          <span>Demo sequence — official PS 174 protocol not yet finalized (see <code>docs/EXPERIMENT_PROTOCOL.md</code>).</span>
+        </div>
         <div class="grid grid-exp">
 
           <div class="panel span-4">
@@ -291,6 +302,10 @@
 
       <!-- ================= EXPERIMENT BUILDER ================= -->
       <section class="page" id="page-experiment-builder">
+        <div class="demo-protocol-notice">
+          <i data-lucide="info"></i>
+          <span>Demo sequence — official PS 174 protocol not yet finalized (see <code>docs/EXPERIMENT_PROTOCOL.md</code>).</span>
+        </div>
         <div class="grid grid-builder">
           <div class="panel span-5">
             <div class="panel-head"><div class="panel-head-title"><i data-lucide="pencil-ruler"></i> NEW EXPERIMENT</div></div>
@@ -345,6 +360,10 @@
 
       <!-- ================= AI PIPELINE ================= -->
       <section class="page" id="page-ai-pipeline">
+        <div class="demo-protocol-notice">
+          <i data-lucide="info"></i>
+          <span>Demo sequence — official PS 174 protocol not yet finalized (see <code>docs/EXPERIMENT_PROTOCOL.md</code>).</span>
+        </div>
         <div class="grid grid-pipeline">
           <div class="panel span-12">
             <div class="panel-head"><div class="panel-head-title"><i data-lucide="git-branch"></i> END-TO-END AI PROCESSING PIPELINE</div></div>

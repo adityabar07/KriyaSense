@@ -22,16 +22,29 @@
   };
 
   const MODULES = [
-    { name: 'YOLO', desc: 'Object / person detection' },
-    { name: 'POSE', desc: 'MediaPipe / YOLO Pose estimation' },
-    { name: 'TRACKING', desc: 'Cross-frame identity tracking' },
-    { name: 'HAND DETECTION', desc: 'Hand position localization' },
+    { name: 'YOLO',                    desc: 'Object / person detection' },
+    { name: 'POSE',                    desc: 'MediaPipe / YOLO Pose estimation' },
+    { name: 'TRACKING',                desc: 'Cross-frame identity tracking' },
+    { name: 'HAND DETECTION',          desc: 'Hand position localization' },
     { name: 'HAND-OBJECT INTERACTION', desc: 'Manipulation classification' },
-    { name: 'HAR MODEL', desc: 'Human activity recognition' },
-    { name: 'TEMPORAL MODEL', desc: 'LSTM / GRU / Transformer' },
-    { name: 'FSM', desc: 'Experiment sequence validation' },
-    { name: 'TTS', desc: 'Voice guidance & alerts' },
+    { name: 'HAR MODEL',               desc: 'Human activity recognition' },
+    { name: 'TEMPORAL MODEL',          desc: 'LSTM / GRU / Transformer' },
+    { name: 'FSM',                     desc: 'Experiment sequence validation' },
+    { name: 'TTS',                     desc: 'Voice guidance & alerts' },
   ];
+
+  /* Which modules are ALWAYS simulated in the current build regardless of mode.
+     YOLO, POSE, TRACKING, FSM run in REAL mode.
+     Hand interaction, HAR, TTS are scripted regardless. */
+  const MODULES_MOCK  = new Set(['HAND DETECTION', 'HAND-OBJECT INTERACTION', 'HAR MODEL', 'TTS']);
+  const MODULES_UNIMPL = new Set(['TEMPORAL MODEL']);
+
+  function getModuleState(name) {
+    const isReal = ASTRA_API.getDetectionMode() === 'REAL' && ASTRA_API.isRealDetectionReady();
+    if (MODULES_UNIMPL.has(name)) return 'unimpl';
+    if (MODULES_MOCK.has(name) || !isReal) return 'mock';
+    return 'live';
+  }
 
   const state = {
     activePage: 'dashboard',
@@ -382,10 +395,10 @@
     const mode = ASTRA_API.getDetectionMode();
     if (mode === 'REAL') {
       return ASTRA_API.isRealDetectionReady()
-        ? { text: '● REAL AI DETECTION', cls: 'tag-mode-real' }
-        : { text: 'LOADING REAL AI…', cls: 'tag-mode-loading' };
+        ? { text: '🟢 LIVE DETECTION (unverified objects)', dotCls: 'dot-green', cls: 'tag-mode-real', pillCls: 'pill-mode-real' }
+        : { text: '🟡 LOADING LIVE DETECTION…', dotCls: 'dot-orange', cls: 'tag-mode-loading', pillCls: 'pill-mode-loading' };
     }
-    return { text: '● SIMULATED (MOCK)', cls: 'tag-mode-sim' };
+    return { text: '🔴 SIMULATED DATA', dotCls: 'dot-orange', cls: 'tag-mode-sim', pillCls: 'pill-mode-sim' };
   }
 
   function updateModeUI() {
@@ -396,6 +409,13 @@
       el.textContent = badge.text;
       el.className = `tag ${badge.cls}`;
     });
+
+    const topbarText = $('#topbarModeText');
+    const topbarDot = $('#topbarModeDot');
+    const topbarPill = $('#topbarModeBadge');
+    if (topbarText) topbarText.textContent = badge.text;
+    if (topbarDot) topbarDot.className = `dot ${badge.dotCls} pulse`;
+    if (topbarPill) topbarPill.className = `status-pill status-pill-mode ${badge.pillCls}`;
 
     const mode = ASTRA_API.getDetectionMode();
     $all('#detectionModeToggle .mode-btn').forEach(btn => {
@@ -415,7 +435,10 @@
     $all('#detectionModeToggle .mode-btn').forEach(btn => {
       btn.addEventListener('click', () => ASTRA_API.setDetectionMode(btn.dataset.mode));
     });
-    ASTRA_API.onModeChange(updateModeUI);
+    ASTRA_API.onModeChange(() => {
+      updateModeUI();
+      renderModulePanels();   /* re-render honest status on mode switch */
+    });
     updateModeUI();
   }
 
@@ -444,19 +467,48 @@
 
   /* ------------------------------- EXPERIMENT MODE PAGE ------------------------------- */
 
+  function sequenceRailHtml(status) {
+    if (!status || !status.sequence || !status.sequence.length) return '';
+    return `
+      <div class="sequence-rail" role="region" aria-label="Experiment Sequence Rail">
+        ${status.sequence.map((s, i) => {
+          const isDone = i < status.currentIndex;
+          const isCurrent = i === status.currentIndex && !status.completed;
+          const isSkipped = isCurrent && status.status === 'INVALID';
+          const nodeState = isSkipped ? 'skipped' : isDone ? 'done' : isCurrent ? 'current' : 'pending';
+          const stateLabel = isSkipped ? 'GAP' : isDone ? 'DONE' : isCurrent ? 'NOW' : i === status.currentIndex + 1 ? 'NEXT' : 'PEND';
+          const lineClass = isDone ? 'line-solid' : isSkipped ? 'line-broken' : 'line-pending';
+          return `
+            <div class="rail-node-wrap ${nodeState}">
+              <div class="rail-node ${nodeState}" title="S${i+1}: ${s.label} (${stateLabel})">
+                <span class="rail-id">S${i+1}</span>
+              </div>
+              <span class="rail-label">${s.label}</span>
+              <span class="rail-status-text">${stateLabel}</span>
+            </div>
+            ${i < status.sequence.length - 1 ? `<div class="rail-connector ${lineClass}"></div>` : ''}
+          `;
+        }).join('')}
+      </div>`;
+  }
+
   function renderStepList(status) {
     const el = $('#stepList');
     if (!el) return;
-    el.innerHTML = status.sequence.map((s, i) => {
-      const isDone = i < status.currentIndex;
-      const isCurrent = i === status.currentIndex && !status.completed;
-      const cls = isDone ? 'done' : isCurrent ? 'current' : '';
-      const icon = isDone ? '✓' : isCurrent ? '●' : '○';
-      return `<div class="step-item ${cls}">
-        <div class="step-icon">${icon}</div>
-        <div class="step-label">${String(i + 1).padStart(2, '0')} ${s.label}</div>
+    el.innerHTML = `
+      ${sequenceRailHtml(status)}
+      <div style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
+        ${status.sequence.map((s, i) => {
+          const isDone = i < status.currentIndex;
+          const isCurrent = i === status.currentIndex && !status.completed;
+          const cls = isDone ? 'done' : isCurrent ? 'current' : '';
+          const icon = isDone ? '✓' : isCurrent ? '●' : '○';
+          return `<div class="step-item ${cls}">
+            <div class="step-icon">${icon}</div>
+            <div class="step-label">${String(i + 1).padStart(2, '0')} ${s.label}</div>
+          </div>`;
+        }).join('')}
       </div>`;
-    }).join('');
     $('#stepCurrent').textContent = status.completed ? status.totalSteps : status.currentStepNumber;
     $('#stepTotal').textContent = status.totalSteps;
   }
@@ -568,7 +620,8 @@
       <div class="dash-exp-row"><span>Detected</span><b>${status.lastViolation ? status.lastViolation.detected : status.expected}</b></div>
       <div class="dash-exp-status ${status.status === 'VALID' ? 'status-valid' : 'status-invalid'}">
         ${status.status === 'VALID' ? '✓ VALID TRANSITION' : '⚠ SEQUENCE VIOLATION'}
-      </div>`;
+      </div>
+      ${sequenceRailHtml(status)}`;
   }
 
   function showViolationToast(v) {
@@ -838,6 +891,8 @@
 
   function init() {
     initNav();
+    /* Inject honest module state resolver before first render */
+    ASTRA_VIZ.setModuleStateResolver(getModuleState);
     renderModulePanels();
     renderHoiPanel(null);
     renderPosePanel(null);

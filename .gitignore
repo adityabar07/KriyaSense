@@ -1,27 +1,93 @@
-# Environment
+# ============================================================
+# KriyaSense — .gitignore
+# Rule: commit code, config, and .gitkeep sentinels.
+#        Never commit runtime output, trained weights, or secrets.
+# ============================================================
+
+# ── Secrets & environment ────────────────────────────────────
 backend/.env
 .env
 
-# Python
+# ── Python ──────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
 
-# Node (only relevant if npm run dev tooling is used)
+# ── Node (if npm tooling is added) ──────────────────────────
 node_modules/
 
-# Runtime artifacts
-recordings/*
-!recordings/.gitkeep
-logs/*
-!logs/.gitkeep
-data/*
-!data/.gitkeep
-models/*
-!models/.gitkeep
-experiments/*
-!experiments/.gitkeep
-
-# OS/editor
+# ── OS / editor ─────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ============================================================
+# models/  — backend trained weights (large binaries)
+#            The folder and its .gitkeep ARE tracked.
+#            Actual weight files are NOT.
+# ============================================================
+models/*.pt
+models/*.onnx
+models/*.pth
+models/*.bin
+models/*.safetensors
+models/**/*.pt
+models/**/*.onnx
+models/**/*.pth
+!models/.gitkeep
+
+# ============================================================
+# logging/  — runtime-generated log output
+#             Code in logging/ (scripts) IS tracked.
+#             Output files produced at runtime are NOT.
+# ============================================================
+logging/output/
+logging/*.txt
+logging/*.csv
+logging/*.json
+logging/*.log
+!logging/.gitkeep
+
+# ============================================================
+# video/  — recorded video output
+#           Code in video/ IS tracked.
+#           Recorded media files are NOT.
+# ============================================================
+video/recordings/
+video/*.mp4
+video/*.avi
+video/*.mkv
+video/*.mov
+!video/.gitkeep
+
+# ============================================================
+# evaluation/  — generated reports / benchmark plots
+#               Evaluation scripts ARE tracked.
+#               Run-generated outputs are NOT.
+# ============================================================
+evaluation/results/
+evaluation/*.png
+evaluation/*.jpg
+evaluation/*.csv
+evaluation/*.json
+evaluation/*.pdf
+!evaluation/.gitkeep
+
+# ============================================================
+# configs/ scripts/ state_machine/ tests/
+#   — pure code / YAML — everything in these folders is tracked.
+#     No ignore rules added here by design.
+# ============================================================
+
+# ============================================================
+# frontend/assets/mediapipe/
+#   These .tflite and .task files are REQUIRED browser-side
+#   runtime assets for the offline-capable build.
+#   They are NOT the same as root models/ backend weights.
+#   Explicitly un-ignore them to be safe.
+# ============================================================
+!frontend/assets/mediapipe/
+!frontend/assets/mediapipe/**

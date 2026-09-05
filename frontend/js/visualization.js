@@ -9,15 +9,61 @@
 
 const ASTRA_VIZ = (() => {
 
+  /* ---------- Honest 3-state module resolver ----------
+   * State definitions (from DESIGN.md §2.3):
+   *   'live'    – module running on real hardware/inference  → green  "LIVE"
+   *   'mock'    – module simulated / scripted                → amber  "MOCK"
+   *   'unimpl'  – module not yet implemented                 → grey   "NOT IMPL"
+   *
+   * app.js calls setModuleStateResolver() during init to inject
+   * the runtime logic so this file stays decoupled from api.js.
+   */
+  let _moduleStateResolver = null;
+
+  function setModuleStateResolver(fn) {
+    _moduleStateResolver = fn;
+  }
+
+  /* Modules that are always in MOCK/simulation in the current build */
+  const MOCK_MODULES = new Set([
+    'HAND DETECTION', 'HAND-OBJECT INTERACTION', 'HAR MODEL',
+    'TEMPORAL MODEL', 'TTS',
+  ]);
+
+  /* Modules that are scaffolded but not yet implemented */
+  const UNIMPL_MODULES = new Set([
+    'TEMPORAL MODEL',
+  ]);
+
+  function resolveModuleState(moduleName) {
+    if (_moduleStateResolver) return _moduleStateResolver(moduleName);
+    /* Fallback: derive from detection mode if ASTRA_API is available */
+    const isReal = typeof ASTRA_API !== 'undefined'
+      && ASTRA_API.getDetectionMode() === 'REAL'
+      && ASTRA_API.isRealDetectionReady();
+    if (UNIMPL_MODULES.has(moduleName)) return 'unimpl';
+    if (!isReal || MOCK_MODULES.has(moduleName)) return 'mock';
+    return 'live';
+  }
+
+  const STATE_LABEL  = { live: 'LIVE', mock: 'MOCK', unimpl: 'NOT IMPL' };
+  const STATE_DOT    = { live: 'dot-green', mock: 'dot-orange', unimpl: '' };
+
   function renderModuleStatusList(container, modules) {
-    container.innerHTML = modules.map(m => `
+    container.innerHTML = modules.map(m => {
+      const state = resolveModuleState(m.name);
+      const label = STATE_LABEL[state];
+      const dotCls = STATE_DOT[state];
+      const dot = dotCls ? `<span class="dot ${dotCls}"></span> ` : '';
+      return `
       <div class="module-status-item">
         <div>
           <div class="m-name">${m.name}</div>
           <div class="m-desc">${m.desc}</div>
         </div>
-        <div class="m-state"><span class="dot dot-green pulse"></span> ONLINE</div>
-      </div>`).join('');
+        <div class="m-state state-${state}">${dot}${label}</div>
+      </div>`;
+    }).join('');
   }
 
   const PIPELINE_STAGES = [
@@ -143,6 +189,7 @@ const ASTRA_VIZ = (() => {
     renderArchDiagram,
     initPerfChart,
     pushPerfSample,
+    setModuleStateResolver,
     PIPELINE_STAGES,
   };
 })();
