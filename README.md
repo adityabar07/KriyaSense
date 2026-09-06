@@ -1,4 +1,5 @@
 <div align="center">
+<img width="102" height="89" alt="logo" src="https://github.com/user-attachments/assets/d522b65d-7b6d-4d4a-9719-e9ae6275b837" />
 
 # KriyaSense
 
